@@ -1,0 +1,40 @@
+=== tier_nohead 11:20:27
+{"mode": "short", "prompt_tokens": 49, "completion_tokens": 299, "chunks": 299, "ttft_s": 1.41, "prefill_tok_s": 34.8, "total_s": 12.09, "decode_tok_s": 27.9}
+TEXT: In a Mixture-of-Experts (MoE) transformer layer, the routing mechanism is designed to activate only a sparse subset of parameters for each input token, significantly enhancing computational efficiency. When a token enters an MoE layer, it first passes through a lightweight gating network, typically a small linear projection followed by a softmax function. This gating network calculates a probability score for every available expert in the layer, indicating how relevant each expert is to the specific input token.
+
+Instead of processing the token through all experts, the system selects only the top-k experts with the highest scores. For instance, if k=2, the token is routed exclusively to these two experts, while the remaining experts remain inactive for that specific token. The outputs from the selected experts are then weighted by their gating scores and summed to produce the final output for that token. This sparse activation pattern means that while the total number of parameters in an MoE model can be vastly larger than a dense model, the active computation per token remains constant and low.
+
+This sparsity makes offloading experts to CPU RAM highly practical. Since only a small fraction of experts are active at any given time, the GPU does not need to hold the entire model’s weights in its high-speed VRAM simultaneously. Instead, the GPU can keep only the currently active experts in VRAM for fast processing, while the vast majority of inactive experts reside in the larger, slower CPU RAM. When a new token requires different experts, the system swaps the
+{"mode": "short", "prompt_tokens": 49, "completion_tokens": 299, "chunks": 299, "ttft_s": 0.96, "prefill_tok_s": 51.0, "total_s": 11.72, "decode_tok_s": 27.7}
+TEXT: In a Mixture-of-Experts (MoE) transformer layer, the routing mechanism is designed to activate only a sparse subset of parameters for each input token, significantly enhancing computational efficiency. When a token enters an MoE layer, it first passes through a lightweight gating network, typically a small linear projection followed by a softmax function. This gating network calculates a probability score for every available expert, indicating how relevant each expert is to the specific token’s features.
+
+Instead of processing the token through all experts, the system selects only the top-k experts with the highest scores. For example, if there are 64 experts but k=2, only two experts process each token. The token’s representation is then multiplied by these scores and summed across the selected experts’ outputs. This sparse activation means that while the model may have billions of parameters, the active computation per token involves only a tiny fraction of them.
+
+This sparsity makes offloading experts to CPU RAM highly practical. In dense transformer models, all parameters must reside in high-bandwidth GPU VRAM simultaneously because every parameter is used for every token. However, in MoE architectures, since only a few experts are active at any given time, the majority of the model’s parameters can remain dormant in slower, cheaper, and higher-capacity CPU RAM. During inference or training, only the active experts need to be loaded into the GPU’s fast VRAM. This allows for much larger models to be deployed on hardware with limited VRAM
+{"mode": "short", "prompt_tokens": 49, "completion_tokens": 299, "chunks": 299, "ttft_s": 0.96, "prefill_tok_s": 51.0, "total_s": 11.2, "decode_tok_s": 29.08}
+TEXT: In a Mixture-of-Experts (MoE) transformer layer, the routing mechanism is designed to activate only a sparse subset of parameters for each input token, significantly enhancing computational efficiency. When a token enters an MoE layer, it first passes through a lightweight gating network, typically a small linear projection followed by a softmax function. This gating network calculates a probability score for every available expert, indicating how relevant each expert is to the specific token’s features.
+
+Instead of processing the token through all experts, the system selects only the top-k experts with the highest scores. For example, if there are 64 experts but k=2, only two experts process each token. The token’s representation is then multiplied by these scores and summed across the selected experts’ outputs. This sparse activation means that while the model may have billions of parameters, the active computation per token involves only a tiny fraction of them.
+
+This sparsity makes offloading experts to CPU RAM highly practical. In dense transformer models, all parameters must reside in high-bandwidth GPU VRAM simultaneously because every parameter is used for every token. However, in MoE architectures, since only a few experts are active at any given time, the majority of experts can remain dormant in slower, cheaper, and higher-capacity CPU RAM. During inference or training, only the active experts need to be loaded into the GPU’s VRAM. This drastically reduces the VRAM footprint, allowing for much larger models to be deployed on hardware with
+{"mode": "long_prompt", "prompt_tokens": 6124, "completion_tokens": 119, "chunks": 119, "ttft_s": 6.9, "prefill_tok_s": 887.5, "total_s": 10.66, "decode_tok_s": 31.45}
+TEXT: *   **Executes a multi-turn agent loop** that chains tool results back into the context for subsequent turns, allowing the model to iteratively refine its actions until it answers or reaches a turn limit, unlike single-step routers.
+*   **Enforces strict grounding via grammar-bounded JSON** for tool selection (ensuring valid arguments) while allowing free-text generation for final answers to avoid formatting issues with small local models.
+*   **Integrates comprehensive verification and repair mechanisms**, including code linting, import checking, HTTP endpoint testing, and Android emulator validation, to ensure generated
+{"mode": "short", "prompt_tokens": 57, "completion_tokens": 129, "chunks": 128, "ttft_s": 1.09, "prefill_tok_s": 52.3, "total_s": 5.17, "decode_tok_s": 31.61}
+TEXT: ```python
+def merge_intervals(intervals):
+    if not intervals:
+        return []
+    intervals.sort(key=lambda x: x[0])
+    merged = [intervals[0]]
+    for current in intervals[1:]:
+        last = merged[-1]
+        if current[0] <= last[1]:
+            last[1] = max(last[1], current[1])
+        else:
+            merged.append(current)
+    return merged
+```
+
+The time complexity is O(n log n) due to the initial sorting step, where n is the number of intervals.

@@ -82,3 +82,9 @@ Remaining levers, cheapest first:
 3. Hot-expert residency: popularity-based (LFU) mlock of the hottest experts so the page cache can't evict
    them (sim: LFU beats LRU for the RAM tier).
 4. Raise WSL's memory cap (48 -> ~56 GB) for more page cache.
+
+## Validation 1 - the tier layer does not change the model's math (2026-09-26)
+Qwen3.6-35B-A3B FTW, `--moe-strategy cpu`, greedy, 5 prompts (3 short, 1 long 6k, 1 coding):
+stock vs tier (FT_FILE_BANKS + WILLNEED + FT_EMBED_HOST + FT_HEAD_HOST) vs tier_nohead -> **byte-identical
+outputs, 5/5 for both** (`qwentier_*.log`). Speed on a model that fits in RAM is unchanged within noise
+(stock 25-27, tier 22-28, tier_nohead 28-31 tok/s).
