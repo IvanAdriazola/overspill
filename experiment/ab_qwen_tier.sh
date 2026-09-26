@@ -2,7 +2,7 @@
 # (Git Bash, under the GPU lock) Correctness A/B of the tier layer on Qwen3.6: same strategy, flags on/off.
 HERE=$(cd "$(dirname "$0")" && pwd)
 PY=C:/GIT/chatbot/.venv/Scripts/python.exe
-BENCH=C:/GIT/chatbot/benchmark/moe_engines/bench_openai.py
+BENCH=$(cygpath -m "$HERE/bench_openai.py")
 for MODE in "$@"; do
   LOG="$HERE/qwentier_$MODE.log"
   echo "=== $MODE $(date +%H:%M:%S)" | tee "$LOG"

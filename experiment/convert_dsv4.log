@@ -1,76 +1,0 @@
-Converting dense weights: 0it [00:00, ?it/s]Converting dense weights: 1it [00:00,  1.45i[1m[2026-09-26|03:34:19|core|rank=0][0m [33mWARNING [0m expert banks: low free RAM -> serial build (avoids parallel-reader OOM; override with --expert-load parallel)
-[1m[2026-09-26|03:34:19|core|rank=0][0m [32mINFO    [0m expert banks: slow path (serial build)
-
-wrote FTW checkpoint -> /home/ivan/models/dsv4_reap150b_ftw
-  tensors: 1521 weight + 172 experts_bank
-  FTW: 80.22 GiB across 11 shard(s) (<= 8.0 GiB each)
-  quant_format: ds_fp4  fingerprint=d40ea53ba2531eb1
-  converted in 1169.6s
-201.43it/s]Converting dense weights: 284it [00:02, 202.85it/s]Converting dense weights: 323it [00:03, 219.19it/s]Converting dense weights: 355it [00:03, 220.76it/s]Converting dense weights: 394it [00:03, 229.76it/s]Converting dense weights: 426it [00:03, 230.17it/s]Converting dense weights: 465it [00:03, 235.18it/s]Converting dense weights: 497it [00:03, 228.21it/s]Converting dense weights: 536it [00:03, 235.71it/s]Converting dense weights: 568it [00:04, 227.13it/s]Converting dense weights: 591it [00:04, 215.31it/s]Converting dense weights: 613it [00:06, 37.60it/s] Converting dense weights: 629it [00:06, 38.13it/s]Converting dense weights: 641it [00:07, 38.19it/s]Converting dense weights: 656it [00:08, 21.74it/s]Converting dense weights: 663it [00:09, 17.97it/s]Converting dense weights: 670it [00:09, 18.52it/s]Converting dense weights: 675it [00:10, 18.75it/s]Converting dense weights: 680it [00:10, 20.96it/s]Converting dense weights: 694it [00:10, 31.85it/s]Converting dense weights: 702it [00:10, 33.98it/s]Converting dense weights: 709it [00:10, 38.40it/s]Converting dense weights: 716it [00:13,  8.78it/s]Converting dense weights: 733it [00:13, 13.62it/s]Converting dense weights: 741it [00:13, 16.13it/s]Converting dense weights: 746it [00:14, 17.34it/s]Converting dense weights: 750it [00:15,  9.56it/s]Converting dense weights: 759it [00:15, 12.03it/s]Converting dense weights: 773it [00:16, 18.53it/s]Converting dense weights: 781it [00:16, 19.02it/s]Converting dense weights: 785it [00:17, 13.14it/s]Converting dense weights: 804it [00:17, 19.34it/s]Converting dense weights: 812it [00:18, 21.47it/s]Converting dense weights: 820it [00:18, 20.13it/s]Converting dense weights: 823it [00:19, 13.94it/s]Converting dense weights: 836it [00:19, 18.51it/s]Converting dense weights: 844it [00:19, 20.48it/s]Converting dense weights: 852it [00:20, 18.62it/s]Converting dense weights: 883it [00:20, 34.14it/s]Converting dense weights: 891it [00:21, 31.95it/s]Converting dense weights: 895it [00:22, 12.61it/s]Converting dense weights: 903it [00:23, 15.70it/s]Converting dense weights: 907it [00:23, 14.38it/s]Converting dense weights: 918it [00:23, 19.58it/s]Converting dense weights: 923it [00:24, 17.96it/s]Converting dense weights: 946it [00:24, 31.56it/s]Converting dense weights: 957it [00:24, 33.11it/s]Converting dense weights: 962it [00:24, 31.19it/s]Converting dense weights: 972it [00:27,  9.50it/s]Converting dense weights: 978it [00:27, 11.10it/s]Converting dense weights: 986it [00:27, 14.51it/s]Converting dense weights: 994it [00:28, 15.85it/s]Converting dense weights: 998it [00:29, 10.98it/s]Converting dense weights: 1017it [00:29, 15.99it/s]Converting dense weights: 1025it [00:30, 19.23it/s]Converting dense weights: 1029it [00:30, 19.86it/s]Converting dense weights: 1033it [00:30, 17.36it/s]Converting dense weights: 1036it [00:31, 10.25it/s]Converting dense weights: 1049it [00:31, 15.49it/s]Converting dense weights: 1057it [00:32, 17.85it/s]Converting dense weights: 1065it [00:37,  3.97it/s]Converting dense weights: 1067it [00:39,  3.27it/s]Converting dense weights: 1088it [00:39,  7.84it/s]Converting dense weights: 1104it [00:39, 12.30it/s]Converting dense weights: 1136it [00:39, 24.26it/s]Converting dense weights: 1170it [00:40, 40.90it/s]Converting dense weights: 1186it [00:40, 49.13it/s]Converting dense weights: 1207it [00:40, 61.49it/s]Converting dense weights: 1241it [00:40, 92.61it/s]Converting dense weights: 1262it [00:40, 105.13it/s]Converting dense weights: 1282it [00:40, 111.47it/s]Converting dense weights: 1317it [00:40, 138.87it/s]Converting dense weights: 1349it [00:41, 153.61it/s]Converting dense weights: 1388it [00:41, 179.72it/s]Converting dense weights: 1420it [00:41, 182.59it/s]Converting dense weights: 1454it [00:41, 199.22it/s]Converting dense weights: 1476it [00:41, 184.67it/s]Converting dense weights: 1496it [00:41, 162.32it/s]                                                    Loading DSV4 experts (serial):   0%|          | 0/43 [00:00<?, ?it/s]
-Converting expert banks: 0.00B [00:00, ?B/s][A
-Converting expert banks: 1.64GB [00:04, 396MB/s][ALoading DSV4 experts (serial):   2%|▏         | 1/43 [00:10<07:05, 10.12s/it]
-Converting expert banks: 1.64GB [00:16, 396MB/s][A
-Converting expert banks: 3.29GB [01:12, 42.3MB/s][ALoading DSV4 experts (serial):   5%|▍         | 2/43 [01:17<30:05, 44.04s/it]
-Converting expert banks: 3.29GB [01:43, 42.3MB/s][A
-Converting expert banks: 4.93GB [01:47, 45.7MB/s][ALoading DSV4 experts (serial):   7%|▋         | 3/43 [01:52<26:34, 39.85s/it]
-Converting expert banks: 4.93GB [02:21, 45.7MB/s][A
-Converting expert banks: 6.57GB [02:26, 45.4MB/s][ALoading DSV4 experts (serial):   9%|▉         | 4/43 [02:32<25:46, 39.66s/it]
-Converting expert banks: 6.57GB [02:41, 45.4MB/s][A
-Converting expert banks: 8.22GB [02:51, 52.0MB/s][ALoading DSV4 experts (serial):  12%|█▏        | 5/43 [02:57<21:48, 34.44s/it]
-Converting expert banks: 8.22GB [03:02, 52.0MB/s][A
-Converting expert banks: 9.86GB [03:19, 55.2MB/s][ALoading DSV4 experts (serial):  14%|█▍        | 6/43 [03:25<19:53, 32.27s/it]
-Converting expert banks: 11.5GB [03:22, 78.7MB/s][ALoading DSV4 experts (serial):  16%|█▋        | 7/43 [03:28<13:35, 22.64s/it]
-Converting expert banks: 11.5GB [03:37, 78.7MB/s][A
-Converting expert banks: 13.1GB [04:28, 48.7MB/s][ALoading DSV4 experts (serial):  19%|█▊        | 8/43 [04:33<21:12, 36.36s/it]
-Converting expert banks: 14.8GB [04:31, 68.2MB/s][ALoading DSV4 experts (serial):  21%|██        | 9/43 [04:37<14:42, 25.97s/it]
-Converting expert banks: 16.4GB [04:35, 92.3MB/s][ALoading DSV4 experts (serial):  23%|██▎       | 10/43 [04:41<10:33, 19.18s/it]
-Converting expert banks: 18.1GB [04:42, 114MB/s] [ALoading DSV4 experts (serial):  26%|██▌       | 11/43 [04:48<08:15, 15.50s/it]
-Converting expert banks: 18.1GB [04:54, 114MB/s][A
-Converting expert banks: 19.7GB [05:39, 62.9MB/s][ALoading DSV4 experts (serial):  28%|██▊       | 12/43 [05:45<14:31, 28.10s/it]
-Converting expert banks: 19.7GB [06:03, 62.9MB/s][A
-Converting expert banks: 21.4GB [06:16, 57.4MB/s][ALoading DSV4 experts (serial):  30%|███       | 13/43 [06:21<15:22, 30.74s/it]
-Converting expert banks: 21.4GB [06:27, 57.4MB/s][A
-Converting expert banks: 23.0GB [06:38, 63.0MB/s][ALoading DSV4 experts (serial):  33%|███▎      | 14/43 [06:43<13:33, 28.04s/it]
-Converting expert banks: 24.7GB [06:41, 85.9MB/s][ALoading DSV4 experts (serial):  35%|███▍      | 15/43 [06:46<09:35, 20.56s/it]
-Converting expert banks: 26.3GB [06:51, 101MB/s] [ALoading DSV4 experts (serial):  37%|███▋      | 16/43 [06:57<07:52, 17.52s/it]
-Converting expert banks: 26.3GB [07:04, 101MB/s][A
-Converting expert banks: 27.9GB [07:18, 86.9MB/s][ALoading DSV4 experts (serial):  40%|███▉      | 17/43 [07:24<08:48, 20.31s/it]
-Converting expert banks: 27.9GB [07:43, 86.9MB/s][A
-Converting expert banks: 29.6GB [08:35, 47.1MB/s][ALoading DSV4 experts (serial):  42%|████▏     | 18/43 [08:41<15:36, 37.47s/it]
-Converting expert banks: 31.2GB [08:38, 65.4MB/s][ALoading DSV4 experts (serial):  44%|████▍     | 19/43 [08:44<10:47, 26.98s/it]
-Converting expert banks: 32.9GB [08:41, 88.8MB/s][ALoading DSV4 experts (serial):  47%|████▋     | 20/43 [08:47<07:37, 19.89s/it]
-Converting expert banks: 34.5GB [08:58, 92.6MB/s][ALoading DSV4 experts (serial):  49%|████▉     | 21/43 [09:04<06:59, 19.06s/it]
-Converting expert banks: 34.5GB [09:15, 92.6MB/s][A
-Converting expert banks: 36.2GB [09:30, 76.9MB/s][ALoading DSV4 experts (serial):  51%|█████     | 22/43 [09:36<08:01, 22.94s/it]
-Converting expert banks: 36.2GB [09:46, 76.9MB/s][A
-Converting expert banks: 37.8GB [10:45, 46.0MB/s][ALoading DSV4 experts (serial):  53%|█████▎    | 23/43 [10:51<12:47, 38.39s/it]
-Converting expert banks: 39.4GB [10:48, 63.6MB/s][ALoading DSV4 experts (serial):  56%|█████▌    | 24/43 [10:53<08:47, 27.74s/it]
-Converting expert banks: 41.1GB [10:51, 86.8MB/s][ALoading DSV4 experts (serial):  58%|█████▊    | 25/43 [10:56<06:05, 20.32s/it]
-Converting expert banks: 41.1GB [11:04, 86.8MB/s][A
-Converting expert banks: 42.7GB [11:11, 86.7MB/s][ALoading DSV4 experts (serial):  60%|██████    | 26/43 [11:17<05:46, 20.36s/it]
-Converting expert banks: 44.4GB [11:20, 105MB/s] [ALoading DSV4 experts (serial):  63%|██████▎   | 27/43 [11:26<04:29, 16.87s/it]
-Converting expert banks: 44.4GB [11:39, 105MB/s][A
-Converting expert banks: 46.0GB [11:41, 97.6MB/s][ALoading DSV4 experts (serial):  65%|██████▌   | 28/43 [11:47<04:31, 18.08s/it]
-Converting expert banks: 46.0GB [12:01, 97.6MB/s][A
-Converting expert banks: 47.7GB [13:15, 43.3MB/s][ALoading DSV4 experts (serial):  67%|██████▋   | 29/43 [13:20<09:30, 40.78s/it]
-Converting expert banks: 49.3GB [13:17, 60.3MB/s][ALoading DSV4 experts (serial):  70%|██████▉   | 30/43 [13:23<06:20, 29.29s/it]
-Converting expert banks: 51.0GB [13:19, 84.1MB/s][ALoading DSV4 experts (serial):  72%|███████▏  | 31/43 [13:24<04:11, 20.98s/it]
-Converting expert banks: 52.6GB [13:27, 103MB/s] [ALoading DSV4 experts (serial):  74%|███████▍  | 32/43 [13:33<03:09, 17.19s/it]
-Converting expert banks: 52.6GB [13:51, 103MB/s][A
-Converting expert banks: 54.2GB [13:54, 87.6MB/s][ALoading DSV4 experts (serial):  77%|███████▋  | 33/43 [14:00<03:21, 20.14s/it]
-Converting expert banks: 54.2GB [14:08, 87.6MB/s][A
-Converting expert banks: 55.9GB [15:30, 41.2MB/s][ALoading DSV4 experts (serial):  79%|███████▉  | 34/43 [15:36<06:25, 42.84s/it]
-Converting expert banks: 57.5GB [15:32, 57.4MB/s][ALoading DSV4 experts (serial):  81%|████████▏ | 35/43 [15:38<04:06, 30.76s/it]
-Converting expert banks: 59.2GB [15:39, 75.0MB/s][ALoading DSV4 experts (serial):  84%|████████▎ | 36/43 [15:45<02:44, 23.54s/it]
-Converting expert banks: 60.8GB [15:48, 92.3MB/s][ALoading DSV4 experts (serial):  86%|████████▌ | 37/43 [15:54<01:54, 19.13s/it]
-Converting expert banks: 60.8GB [16:01, 92.3MB/s][A
-Converting expert banks: 62.5GB [17:00, 50.3MB/s][ALoading DSV4 experts (serial):  88%|████████▊ | 38/43 [17:06<02:55, 35.09s/it]
-Converting expert banks: 64.1GB [17:03, 69.5MB/s][ALoading DSV4 experts (serial):  91%|█████████ | 39/43 [17:09<01:41, 25.38s/it]
-Converting expert banks: 64.1GB [17:25, 69.5MB/s][A
-Converting expert banks: 65.7GB [17:37, 62.9MB/s][ALoading DSV4 experts (serial):  93%|█████████▎| 40/43 [17:43<01:24, 28.07s/it]
-Converting expert banks: 67.4GB [17:50, 75.5MB/s][ALoading DSV4 experts (serial):  95%|█████████▌| 41/43 [17:55<00:46, 23.36s/it]
-Converting expert banks: 69.0GB [17:55, 98.2MB/s][ALoading DSV4 experts (serial):  98%|█████████▊| 42/43 [18:01<00:17, 17.97s/it]
-Converting expert banks: 69.0GB [18:06, 98.2MB/s][A
-Converting expert banks: 70.7GB [18:30, 76.8MB/s][ALoading DSV4 experts (serial): 100%|██████████| 43/43 [18:35<00:00, 22.99s/it]Loading DSV4 experts (serial): 100%|██████████| 43/43 [18:36<00:00, 25.96s/it]
-
-                                                 [A

@@ -4,7 +4,7 @@
 # Usage: bench_llamacpp.sh <label> <gguf path in WSL> [extra llama-server args]
 HERE=$(cd "$(dirname "$0")" && pwd)
 PY=C:/GIT/chatbot/.venv/Scripts/python.exe
-BENCH=C:/GIT/chatbot/benchmark/moe_engines/bench_openai.py
+BENCH=$(cygpath -m "$HERE/bench_openai.py")
 LABEL=$1; GGUF=$2; shift 2
 LOG="$HERE/llamacpp_$LABEL.log"
 echo "=== llama.cpp $LABEL $(date +%H:%M:%S) $GGUF args: $*" | tee "$LOG"

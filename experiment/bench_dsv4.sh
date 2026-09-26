@@ -4,7 +4,7 @@
 # Usage: bench_dsv4.sh <label> [extra ft serve args]
 HERE=$(cd "$(dirname "$0")" && pwd)
 PY=C:/GIT/chatbot/.venv/Scripts/python.exe
-BENCH=C:/GIT/chatbot/benchmark/moe_engines/bench_openai.py
+BENCH=$(cygpath -m "$HERE/bench_openai.py")
 LABEL=$1; shift
 LOG="$HERE/dsv4_$LABEL.log"
 echo "=== $LABEL $(date +%H:%M:%S) args: $*" | tee "$LOG"

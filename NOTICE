@@ -1,0 +1,10 @@
+Overspill
+Copyright 2026 Ivan Adriazola
+
+This product is a modified version of FreeToken (https://github.com/FlashML-org/FreeToken),
+Copyright the FlashML Team and FreeToken contributors, licensed under the Apache License, Version 2.0.
+Files changed from FreeToken are identified in the git history (commits on top of FreeToken v0.1.3 +
+its constrained-decoding patch).
+
+The disk-tiering design is inspired by Colibri (https://github.com/JustVugg/colibri) by Vincenzo Fornaro,
+Apache License 2.0. No Colibri code is included.

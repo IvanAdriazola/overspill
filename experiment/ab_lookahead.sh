@@ -4,7 +4,7 @@
 # Usage: ab_lookahead.sh <out_prefix> k [k ...]
 HERE=$(cd "$(dirname "$0")" && pwd)
 PY=/c/GIT/chatbot/.venv/Scripts/python.exe
-BENCH=/c/GIT/chatbot/benchmark/moe_engines/bench_openai.py
+BENCH=$(cygpath -m "$HERE/bench_openai.py")
 OUT=$1; shift
 for K in "$@"; do
   LOG="$HERE/${OUT}_k$K.log"

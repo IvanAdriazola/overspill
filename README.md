@@ -1,85 +1,96 @@
-<div align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/FlashML-org/FreeToken/main/assets/freetoken-logo-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/FlashML-org/FreeToken/main/assets/freetoken-logo-light.svg">
-    <img alt="FreeToken" src="https://raw.githubusercontent.com/FlashML-org/FreeToken/main/assets/freetoken-logo.svg" width=65%>
-  </picture>
-</div>
+# Overspill
 
-<p align="center">
-| <a href="https://www.flashml.ai/"><b>Download</b></a> | <a href="https://arxiv.org/abs/2608.16157"><b>Paper</b></a> | <a href="https://join.slack.com/t/flashml/shared_invite/zt-3zpdh5j10-9dwTXrgLiqpVxizhA9KVbA"><b>Developer Slack</b></a> | <a href="https://discord.gg/MsA277cJzZ"><b>Community Discord</b></a> | <a href="https://github.com/FlashML-org/FreeToken/issues/482"><b>Community WeChat</b></a> |
-</p>
+**Run Mixture-of-Experts models larger than your RAM on a consumer GPU, fast.**
+
+Overspill adds a disk tier to the [FreeToken](https://github.com/FlashML-org/FreeToken) MoE engine: experts that
+don't fit in RAM *overspill* to NVMe and stream back through the OS page cache, while FreeToken's GPU
+execution path stays as it is. Inspired by the disk -> RAM -> VRAM tiering in
+[Colibri](https://github.com/JustVugg/colibri).
 
 
-Unlock datacenter-class intelligence on the hardware you already own — Run 290B+ frontier MoE models locally on your gaming PC at blistering interactive speeds.
+> **Status: experimental preview.** It works and is measured on one machine and one model (details below).
+> Expect rough edges, hard-coded defaults, and missing tests. Issues and reports from other hardware
+> are very welcome.
 
-## About
+## Why
 
-FreeToken is an edge-native Mixture-of-Experts (MoE) serving engine designed for running frontier-scale open-weight models on personal and consumer hardware. It treats heterogeneous edge resources—GPUs, CPUs, host memory, and interconnects—as a unified, elastic inference platform. Its core features include:  
+Stock FreeToken keeps every routed expert in pinned host RAM, so a model whose experts don't fit in RAM
+is refused. Disk-streaming engines such as [Colibri](https://github.com/JustVugg/colibri) do run those
+models, but slowly. Overspill combines the two: FreeToken's GPU execution, with a disk -> RAM -> VRAM
+hierarchy under it.
 
-- **Fast Edge-Native Runtime**: Provides efficient MoE serving with bandwidth-adaptive CPU–GPU co-execution ($q^\star$ policy), full-layer double-buffered prefill streaming, global LRU expert caching, graph-compatible execution, and the FTW fast weight format.  
-- **Semantic-Aware Caching**: Features semantic anchor checkpoints for recurrent state and KV caches, allowing agentic context edits (e.g., tool calls, thinking blocks) to avoid redundant context recomputation.  
-- **Elastic Memory Management**: Supports dynamic, runtime VRAM re-allocation between expert caches and KV memory without engine restarts or weight reloading.  
-- **Broad MoE & Ecosystem Support**: Supports frontier open-weight MoE models (e.g., DeepSeek-V4-Flash, Qwen3.6-35B-A3B, GLM-5.2) across various parameter scales and quantization formats (e.g., MXFP4, NVFP4, FP8, BF16), with Anthropic/OpenAI-compatible APIs for seamless integration with real-world coding and tool-calling agents (e.g., Codex, Claude Code, OpenCode, OpenClaw, DeepSeek Harness). 
-- **Diverse Consumer Hardware**: Scales across consumer laptops, gaming desktops, and workstation GPUs, with native support for NVIDIA RTX 30, RTX 40, and RTX 50 series GPUs.  
+## Results
 
-## Getting Started
+DeepSeek-V4-Flash REAP-150B (`puwaer/DeepSeek-V4-Flash-0731-reap-150b`, 85 GB with FP4 experts). The model
+is **bigger than RAM**: the machine has 64 GB and WSL2 is capped at 48 GB. Hardware: RTX 3060 12 GB,
+Ryzen 9 7900, DDR5-6000, NVMe (through WSL2's virtual disk). All runs start cold (page cache dropped), use
+greedy decoding, and use the same three prompts (a short explanation, a coding question, and a
+6,446-token Python-module summary; see `experiment/bench_openai.py`).
 
-### Desktop app
+| | Overspill | Colibri (cold) | Colibri (warm) | llama.cpp (MXFP4_MOE, experts mmap'd on CPU) |
+|---|---|---|---|---|
+| decode, short prompt | **3.21 tok/s** | 1.17 | 1.19 | 0.54 |
+| decode, coding prompt | **3.37 tok/s** | 1.20 | 1.24 | 0.49 |
+| decode, after a 6.4k prompt | **2.75 tok/s** | 1.12 | 1.16 | 0.38 |
+| time to first token, 6.4k-token prompt | **102 s** | 1565 s | 1557 s | 373 s |
+| time to first token, short prompt | **10 s** (43 s for the very first request after a cold start) | 17.5-25 s | 18-26 s | 40-44 s |
 
-Download FreeToken for Windows or Linux at [flashml.ai](https://www.flashml.ai/). It sets the engine up for you and gives you a GUI for running models, chatting, and tuning the engine.
+That is about **2.7x Colibri and 6-7x llama.cpp on decode**, and **3.7x llama.cpp / 15x Colibri on a
+6.4k-token prompt**. llama.cpp (`81bc6b8`, `-ngl 99 --cpu-moe`, mmap, flash attention) uses the same model at
+the same FP4 expert precision; for a model bigger than RAM, mmap is its only load mode that works. Colibri
+"warm" = second session with a warm page cache.
 
-<div align="center">
-  <img alt="FreeToken Desktop" src="https://raw.githubusercontent.com/FlashML-org/FreeToken/main/assets/desktop-console.png" width=92%>
-</div>
+**Correctness:** on Qwen3.6-35B-A3B (fits in RAM, so stock FreeToken can serve it too) the disk-tier path
+produces **byte-identical greedy output** to stock FreeToken on 5/5 prompts.
 
-### CLI
+## What it changes
 
-Install FreeToken with [uv](https://docs.astral.sh/uv/) (recommended) or pip:
+All of it is opt-in through environment variables; with none set, FreeToken behaves exactly as upstream.
+
+| switch | what it does |
+|---|---|
+| `FT_FILE_BANKS=1` | Non-pinned expert layers of an FTW checkpoint are `mmap`ed from the file instead of read into locked RAM. The page cache is the RAM tier; the NVMe holds the rest. |
+| (automatic with `FT_FILE_BANKS`) | The CPU MoE executor calls `madvise(MADV_WILLNEED)` on every routed expert as soon as a layer's routing is known, so the kernel reads whole experts with large parallel I/Os instead of page fault by page fault (**4x faster expert loading**; this took decode from 0.9 to about 3 tok/s). |
+| `FT_EMBED_HOST=1`, `FT_HEAD_HOST=1` | The token embedding and LM head live in pinned host RAM and the GPU reads them over PCIe (UVA). This frees 2 GiB of VRAM on DeepSeek-V4, which is what makes it fit a 12 GB card. |
+| `FT_SWA_RATIO` | Sizes DeepSeek-V4's sliding-window pool. A bigger pool allows bigger prefill chunks, and every chunk re-streams all experts once (6.4k prompt: 17 chunks / 486 s -> 3 chunks / 99 s). |
+| `FT_CPU_PREFILL_MAX=256` | Prefill chunks up to 256 tokens on disk-backed layers run on the CPU executor instead of streaming the whole layer's experts to the GPU. Short-prompt TTFT drops from 27 s to 10 s, and decode improves because the page cache is no longer flushed by full-model streams. |
+
+Also fixed: FTW conversion of a model bigger than RAM ran out of memory. Shared anonymous mappings were
+"released" with `MADV_DONTNEED`, which doesn't free shmem pages; the fix uses `MADV_REMOVE`.
+
+## Quick start (DeepSeek-V4-Flash REAP-150B, 12 GB GPU)
 
 ```bash
-uv pip install "freetoken[accel]"
+# 1. convert once (streams layer by layer, fine on 48 GB RAM)
+ft checkpoint --model <hf_dir> --out <ftw_dir>
+# 2. serve
+FT_FILE_BANKS=1 FT_EMBED_HOST=1 FT_HEAD_HOST=1 FT_SWA_RATIO=0.7 FT_CPU_PREFILL_MAX=256 \
+ft serve --model <ftw_dir> --moe-strategy cpu --num-tokens 8192 \
+  --cuda-graph-max-bs 1 --max-running-requests 1
 ```
+The CPU executor change is C++ (`python/freetoken/kernel/csrc/cpu_moe/cpu_moe_ext.cpp`); rebuild the
+extension after installing (`experiment/build_cpu_moe.sh` shows how).
 
-Or build from source:
+## Limitations
 
-```bash
-git clone https://github.com/FlashML-org/FreeToken.git && cd FreeToken
-uv venv && source .venv/bin/activate
-uv pip install -e ".[accel]"
-```
+- Measured on one machine and one model; Linux/WSL2 only (it relies on `mmap`/`madvise`).
+- Decode is bounded by expert misses from disk: faster NVMe (or native Linux instead of WSL2's
+  virtual disk) and more RAM help directly.
+- The first request after a cold start is slow (~40 s) while the page cache fills.
+- Single request at a time (`--max-running-requests 1`) is the tested configuration.
 
-For More details:
+## Credits
 
-- [Install FreeToken](https://github.com/FlashML-org/FreeToken/blob/main/docs/install.md)
-- [Quick start](https://github.com/FlashML-org/FreeToken/blob/main/docs/quickstart.md)
-- [Supported models](https://github.com/FlashML-org/FreeToken/blob/main/docs/models.md)
-- [CLI reference](https://github.com/FlashML-org/FreeToken/blob/main/docs/cli.md)
-- [Repairing old FTW checkpoints](https://github.com/FlashML-org/FreeToken/blob/main/docs/ftw-hotfix.md)
+Overspill is a modified version of FreeToken; the FreeToken README is kept as [README_FREETOKEN.md](README_FREETOKEN.md).
 
-## Citation
 
-If you use FreeToken for your research, please cite our [paper](https://arxiv.org/abs/2608.16157):
-
-```bibtex
-@article{yang2026freetoken,
-  title={FreeToken: Efficient Edge-Native MoE Serving with Bandwidth-Adaptive Execution},
-  author={Yang, Shuo and Fan, Xiaoze and Pan, Melissa and Xi, Haocheng and Wang, Zhe and Sun, Shanlin and Keutzer, Kurt and Han, Song and Zaharia, Matei and Xu, Chenfeng and Stoica, Ion},
-  journal={arXiv preprint arXiv:2608.16157},
-  year={2026}
-}
-```
-
-## Acknowledgment
-
-FreeToken was deeply inspired by [mini-sglang](https://github.com/sgl-project/mini-sglang), and
-learned the design and reused code from the following projects:
-[SGLang](https://github.com/sgl-project/sglang),
-[vLLM](https://github.com/vllm-project/vllm),
-[FlashInfer](https://github.com/flashinfer-ai/flashinfer),
-[flash-linear-attention](https://github.com/fla-org/flash-linear-attention),
-[LightLLM](https://github.com/ModelTC/lightllm) and [llama.cpp](https://github.com/ggml-org/llama.cpp).
+- [FreeToken](https://github.com/FlashML-org/FreeToken) (Apache-2.0): the engine this is built on.
+  Everything here is a modification of it, and the modified files are marked in the git history.
+- [Colibri](https://github.com/JustVugg/colibri) by Vincenzo Fornaro (Apache-2.0): the disk -> RAM -> VRAM
+  tiering ideas (expert heat, lookahead). No Colibri code is used.
 
 ## License
 
-[Apache License 2.0](https://github.com/FlashML-org/FreeToken/blob/main/LICENSE).
+Apache-2.0, like FreeToken. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+The benchmark harness, design notes and raw result logs are in [`experiment/`](experiment/).
