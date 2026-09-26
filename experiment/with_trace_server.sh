@@ -24,3 +24,4 @@ until [ "$(curl -s -m 600 -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT
 done
 echo "with_trace_server: ready after $(( $(date +%s) - t0 ))s"
 "$@"
+sleep 8  # let the tracer's 5 s flush thread write the tail before the kill
