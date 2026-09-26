@@ -98,3 +98,9 @@ TTFT 44 / 40 / 373 s, ~1.0 GB/s average disk reads. Answers correct.
 => this fork: ~5-7x llama.cpp decode, 3.8x long-prompt TTFT, and faster short-prompt TTFT than llama.cpp.
 Cross-engine token equality isn't expected (llama.cpp keeps attention in Q8_0, FreeToken in FP8); layer
 correctness rests on Validation 1 (byte-identical to stock FreeToken).
+
+## Validation 3 - CPU short-prefill, clean cold run (v14)
+`FT_CPU_PREFILL_MAX=256`: decode 3.21 / 3.37 / 2.75 tok/s (vs 2.78 / 3.10 / 2.69 without it), TTFT 43 s (first
+request after a cold start; was 34 s), 10.2 s (second short prompt; was 27.5 s), 102 s (6.4k; was 99 s).
+Short prompts no longer stream all 70 GB through the page cache, which evicted the experts decode needs,
+so decode improves too. Shipped on by default. (The v13 run was contaminated by a concurrent 85 GB download.)

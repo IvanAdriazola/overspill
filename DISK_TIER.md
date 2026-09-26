@@ -24,13 +24,13 @@ greedy decoding, and use the same three prompts.
 
 | | this fork | Colibri (cold) | Colibri (warm) | llama.cpp (MXFP4_MOE, experts mmap'd on CPU) |
 |---|---|---|---|---|
-| decode, short prompt | **2.78 tok/s** | 1.17 | 1.19 | 0.54 |
-| decode, coding prompt | **3.10 tok/s** | 1.20 | 1.24 | 0.49 |
-| decode, after a 6.4k prompt | **2.69 tok/s** | 1.12 | 1.16 | 0.38 |
-| time to first token, 6.4k-token prompt | **99 s** | 1565 s | 1557 s | 373 s |
-| time to first token, short prompt | 27-34 s | 17.5-25 s | 18-26 s | 40-44 s |
+| decode, short prompt | **3.21 tok/s** | 1.17 | 1.19 | 0.54 |
+| decode, coding prompt | **3.37 tok/s** | 1.20 | 1.24 | 0.49 |
+| decode, after a 6.4k prompt | **2.75 tok/s** | 1.12 | 1.16 | 0.38 |
+| time to first token, 6.4k-token prompt | **102 s** | 1565 s | 1557 s | 373 s |
+| time to first token, short prompt | **10 s** (43 s for the very first request after a cold start) | 17.5-25 s | 18-26 s | 40-44 s |
 
-That is about **2.5x Colibri and 5-7x llama.cpp on decode**, and **3.8x llama.cpp / 16x Colibri on a
+That is about **2.7x Colibri and 6-7x llama.cpp on decode**, and **3.7x llama.cpp / 15x Colibri on a
 6.4k-token prompt**. llama.cpp (`81bc6b8`, `-ngl 99 --cpu-moe`, mmap, flash attention) uses the same model at
 the same FP4 expert precision; for a model bigger than RAM, mmap is its only load mode that works. Colibri
 "warm" = second session with a warm page cache.
@@ -48,7 +48,7 @@ All of it is opt-in through environment variables; with none set, FreeToken beha
 | (automatic with `FT_FILE_BANKS`) | The CPU MoE executor calls `madvise(MADV_WILLNEED)` on every routed expert as soon as a layer's routing is known, so the kernel reads whole experts with large parallel I/Os instead of page fault by page fault (**4x faster expert loading**; this took decode from 0.9 to about 3 tok/s). |
 | `FT_EMBED_HOST=1`, `FT_HEAD_HOST=1` | The token embedding and LM head live in pinned host RAM and the GPU reads them over PCIe (UVA). This frees 2 GiB of VRAM on DeepSeek-V4, which is what makes it fit a 12 GB card. |
 | `FT_SWA_RATIO` | Sizes DeepSeek-V4's sliding-window pool. A bigger pool allows bigger prefill chunks, and every chunk re-streams all experts once (6.4k prompt: 17 chunks / 486 s -> 3 chunks / 99 s). |
-| `FT_CPU_PREFILL_MAX` | Short prefill chunks on disk-backed layers run on the CPU executor instead of streaming the whole layer to the GPU (work in progress). |
+| `FT_CPU_PREFILL_MAX=256` | Prefill chunks up to 256 tokens on disk-backed layers run on the CPU executor instead of streaming the whole layer's experts to the GPU. Short-prompt TTFT drops from 27 s to 10 s, and decode improves because the page cache is no longer flushed by full-model streams. |
 
 Also fixed: FTW conversion of a model bigger than RAM ran out of memory. Shared anonymous mappings were
 "released" with `MADV_DONTNEED`, which doesn't free shmem pages; the fix uses `MADV_REMOVE`.
@@ -59,7 +59,7 @@ Also fixed: FTW conversion of a model bigger than RAM ran out of memory. Shared 
 # 1. convert once (streams layer by layer, fine on 48 GB RAM)
 ft checkpoint --model <hf_dir> --out <ftw_dir>
 # 2. serve
-FT_FILE_BANKS=1 FT_EMBED_HOST=1 FT_HEAD_HOST=1 FT_SWA_RATIO=0.7 \
+FT_FILE_BANKS=1 FT_EMBED_HOST=1 FT_HEAD_HOST=1 FT_SWA_RATIO=0.7 FT_CPU_PREFILL_MAX=256 \
 ft serve --model <ftw_dir> --moe-strategy cpu --num-tokens 8192 \
   --cuda-graph-max-bs 1 --max-running-requests 1
 ```
@@ -71,7 +71,7 @@ extension after installing (`experiment/build_cpu_moe.sh` shows how).
 - Measured on one machine and one model; Linux/WSL2 only (it relies on `mmap`/`madvise`).
 - Decode is bounded by expert misses from disk: faster NVMe (or native Linux instead of WSL2's
   virtual disk) and more RAM help directly.
-- Short prompts still pay a full expert stream; the CPU-prefill path addresses this and is being measured.
+- The first request after a cold start is slow (~40 s) while the page cache fills.
 - Single request at a time (`--max-running-requests 1`) is the tested configuration.
 
 ## Credits
