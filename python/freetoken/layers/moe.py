@@ -25,6 +25,10 @@ TopK = Tuple[torch.Tensor, torch.Tensor]
 # GPU work) -- a measurement-only escape hatch to A/B the overlap benefit.
 _HYBRID_OVERLAP = os.getenv("FREETOKEN_HYBRID_OVERLAP", "1") != "0"
 
+# Tiering experiment: prefill chunks up to this many tokens run CPU-served layers on the
+# CPU executor instead of streaming the layer to the GPU (0 = off).
+_CPU_PREFILL_MAX = int(os.getenv("FT_CPU_PREFILL_MAX", "0"))
+
 
 class MoELayer(BaseOP):
     """Resident routed experts.
@@ -364,6 +368,15 @@ class OffloadMoELayer(MoELayer):
         pass through unmapped."""
         cache = self.offload_cache
         assert cache is not None
+        # Tiering experiment: a short chunk on a CPU-served (e.g. file-mapped) layer is
+        # cheaper to compute on the CPU executor, like decode, than to stream the whole
+        # layer's experts to the GPU (~all 70 GiB per chunk for DeepSeek-V4).
+        if (
+            0 < hidden_states.shape[0] <= _CPU_PREFILL_MAX
+            and cache.is_cpu_layer(self.layer_id)
+            and cache.cpu_executor is not None
+        ):
+            return cache.cpu_executor.decode(self.layer_id, hidden_states, topk_weights, topk_ids)
         if cache.prefill_overlap:
             views = self._wait_prefill_overlap(cache)
             out = self._expert_gemm(
