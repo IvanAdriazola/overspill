@@ -109,3 +109,10 @@ so decode improves too. Shipped on by default. (The v13 run was contaminated by 
 3 Workshop tasks (tool calls, grammar-constrained JSON, multi-turn, prefix cache hits ~1.8k tokens/call):
 9.1 PASS (474 s), 8.1 PASS (544 s), 2.1 FAIL (87 s): on daring's free-text first call the model wrote its own
 `<tool_call>` markup instead of Workshop's format - a model/prompt-format mismatch, not an engine error.
+
+## Validation 5 - llama.cpp `--n-cpu-moe 42` (suggested by a Reddit commenter)
+Same build and flags as the published run, but `--n-cpu-moe 42` instead of `--cpu-moe` (the experts of
+1 of 43 layers go on the GPU, which is all that fits next to ~9.4 GB of non-expert weights on 12 GB). Cold:
+decode 0.58 / 0.54 / 0.49 tok/s (vs 0.54 / 0.49 / 0.38), TTFT 42 / 39 / 349 s (vs 44 / 40 / 373 s).
+Caveat: the long prompt here is 5,937 tokens (the bench was decoupled from the private module used for the
+6,446-token runs), so that row is close but not identical. Net: +10-25% for llama.cpp; Overspill still ~5-6x faster.

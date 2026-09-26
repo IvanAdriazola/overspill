@@ -1,0 +1,55 @@
+=== llama.cpp ncpumoe42 15:29:41 /home/ivan/models/dsv4_reap150b_gguf/DeepSeek-V4-Flash-0731-reap-150b-MXFP4_MOE.gguf args: --n-cpu-moe 42
+ready after 83s
+{"mode": "short", "prompt_tokens": 38, "completion_tokens": 128, "chunks": 128, "ttft_s": 42.16, "prefill_tok_s": 0.9, "total_s": 260.77, "decode_tok_s": 0.58}
+TEXT: We need to explain in about 250 words how a Mixture-of-Experts (MoE) transformer layer routes tokens to experts, and why that makes offloading experts to CPU RAM practical. Let's structure: 
+
+- In MoE, each token is routed to a small subset of experts (e.g., top-k) via a learned router (gating function). The router computes a score for each expert and selects top-k. Only those experts process the token; others are skipped. 
+
+- Because each token only activates a few experts, the compute per token is much lower than a dense layer with the same total parameter count.
+{"mode": "short", "prompt_tokens": 51, "completion_tokens": 338, "chunks": 336, "ttft_s": 38.64, "prefill_tok_s": 1.3, "total_s": 664.63, "decode_tok_s": 0.54}
+TEXT: We need to write a Python function merge_intervals(intervals) that merges overlapping intervals. Return merged sorted list. Provide code and one sentence on time complexity.
+
+We need to output only code and one sentence. Let's craft.
+
+Code:
+
+def merge_intervals(intervals):
+    if not intervals:
+        return []
+    intervals.sort(key=lambda x: x[0])
+    merged = [intervals[0]]
+    for start, end in intervals[1:]:
+        last_start, last_end = merged[-1]
+        if start <= last_end:
+            merged[-1][1] = max(last_end, end)
+        else:
+            merged.append([start, end])
+    return merged
+
+Time complexity: O(n log n) due to sorting, where n is number of intervals.
+
+We need to output only code and one sentence. So final answer should be code block and then sentence. The instruction says "Give only the code and one sentence on its time complexity." So we can output code and then sentence. Probably no extra text.
+
+Let's produce.```python
+def merge_intervals(intervals):
+    if not intervals:
+        return []
+    intervals.sort(key=lambda x: x[0])
+    merged = [intervals[0]]
+    for start, end in intervals[1:]:
+        last_start, last_end = merged[-1]
+        if start <= last_end:
+            merged[-1][1] = max(last_end, end)
+        else:
+            merged.append([start, end])
+    return merged
+```
+Time complexity: O(n log n) due to sorting, where n is the number of intervals.
+{"mode": "long_prompt", "prompt_tokens": 5937, "completion_tokens": 120, "chunks": 120, "ttft_s": 348.63, "prefill_tok_s": 17.0, "total_s": 594.01, "decode_tok_s": 0.49}
+TEXT: We need to summarize what this Python module does in 3 short bullet points. The module is a large engine initialization file. We need to extract the main purpose.
+
+The code is from a file that likely is the engine initialization for a model serving system. It sets up the engine, loads model weights, initializes KV cache, attention backend, sampler, graph runner, etc.
+
+We need to summarize in 3 bullet points. Let's think about the main responsibilities:
+
+1. It initializes the engine: sets up GPU, communication, model loading, quantization, MoE offload cache, multimodal
