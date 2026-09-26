@@ -83,7 +83,7 @@ class HostBank:
 
     The buffer is rounded up to the O_DIRECT block; ``tensor`` views exactly ``nbytes``. ``backing=None`` follows ``FREETOKEN_BANK_CUDA_ALLOC``."""
 
-    __slots__ = ("tensor", "addr", "nbytes", "_buf", "_pinned", "_locked")
+    __slots__ = ("tensor", "addr", "nbytes", "_buf", "_pinned", "_locked", "_file")
 
     def __init__(self, shape: tuple[int, ...], dtype: torch.dtype,
                  *, backing: str | None = None):
@@ -115,9 +115,39 @@ class HostBank:
             self._pinned = False
         self.tensor = torch.frombuffer(self._buf, dtype=dtype, count=self.nbytes // elsize).view(*shape)
         self._locked = False
+        self._file = False
+
+    @classmethod
+    def from_file(cls, path: str, offset: int, shape: tuple[int, ...], dtype: torch.dtype) -> "HostBank":
+        """A bank that IS a byte range of a file (tiering experiment): mapped, not read.
+
+        Pages come in from disk on first touch and live in the OS page cache, which the kernel
+        evicts under memory pressure -- the page cache acts as the RAM tier and the file as
+        the disk tier. Mapped copy-on-write so the buffer is writable for torch/ctypes;
+        nothing writes it, so no private copies are ever made. Never pinned or locked
+        (always PAGEABLE -> served by the CPU executor / the pageable prefill copy)."""
+        assert offset % _BLK == 0, offset
+        self = cls.__new__(cls)
+        elsize = torch.empty((), dtype=dtype).element_size()
+        self.nbytes = math.prod(shape) * elsize
+        fd = os.open(path, os.O_RDONLY)
+        try:
+            self._buf = mmap.mmap(fd, self.nbytes, flags=mmap.MAP_PRIVATE,
+                                  prot=mmap.PROT_READ | mmap.PROT_WRITE, offset=offset)
+        finally:
+            os.close(fd)  # the mapping keeps its own reference to the file
+        _LIVE_BUFFERS.append(self._buf)
+        self.addr = ctypes.addressof(ctypes.c_char.from_buffer(self._buf))
+        self.tensor = torch.frombuffer(self._buf, dtype=dtype, count=self.nbytes // elsize).view(*shape)
+        self._pinned = False
+        self._locked = False
+        self._file = True
+        return self
 
     @property
     def residency(self) -> HostResidency:
+        if self._file:
+            return HostResidency.PAGEABLE
         if self._pinned:
             return HostResidency.PINNED
         if self._locked:
@@ -131,7 +161,7 @@ class HostBank:
         """cudaHostRegister the (now-filled) buffer -- pin-after-fill.
 
         ``FREETOKEN_SKIP_BANK_PIN=1`` makes this a no-op for CPU-only tooling (the FTW converter); never set it when serving, the GPU paths need registered banks."""
-        if self._pinned:
+        if self._pinned or self._file:
             return
         if os.environ.get("FREETOKEN_SKIP_BANK_PIN", "").strip().lower() in ("1", "true", "yes", "on"):
             return
@@ -155,7 +185,7 @@ class HostBank:
         """mlock the (now-filled) buffer: resident without CUDA pin quota, but no device address -- only the CPU executor can serve a locked layer.
 
         Lock after fill, or the lazy mmap faults+zero-fills every page. A failed lock (RLIMIT_MEMLOCK) warns once and leaves the bank PAGEABLE, which every consumer treats the same."""
-        if self._locked or self._pinned:  # cudaHostRegister already page-locks
+        if self._locked or self._pinned or self._file:  # cudaHostRegister already page-locks; file banks page on demand
             return
         global _os_lock_failed
         if _os_lock_failed:

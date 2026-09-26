@@ -288,6 +288,15 @@ class FTWReader:
                     self._maps[file] = entry
         return entry[1]
 
+    def file_range(self, entry: dict) -> tuple[str, int] | None:
+        """(shard path, file offset) when ``entry`` lies wholly inside one shard, else None."""
+        off, n = entry["global_off"], entry["nbytes"]
+        for sh in self.shards:
+            start = sh["global_off"]
+            if start <= off and off + n <= start + sh["nbytes"]:
+                return os.path.join(self.dir, sh["file"]), off - start
+        return None
+
     def close(self) -> None:
         for fd in self._fds.values():
             os.close(fd)
@@ -471,6 +480,8 @@ def load_ftw_banks(
     from freetoken.utils.progress import byte_bar
 
     residency = layer_residency or [HostResidency.PINNED.value] * num_layers
+    file_banks = os.environ.get("FT_FILE_BANKS", "").lower() in ("1", "true", "yes", "on")
+    file_mapped_bytes = 0
     assert len(residency) == num_layers, (len(residency), num_layers)
 
     # PINNED layers are born-pinned (cudaHostAlloc) where that wins (see born_pinned_default); LOCKED/PAGEABLE layers stay lazy mmaps
@@ -555,12 +566,24 @@ def load_ftw_banks(
         for layer_id in range(num_layers):
             e = by_layer[layer_id]
             assert e["global_off"] % ALIGN == 0, (base, layer_id, e["global_off"])  # writer invariant
+            # Tiering experiment: a non-pinned layer is served straight from the file (page cache =
+            # RAM tier, disk = the rest) instead of being read into locked RAM.
+            where = reader.file_range(e) if file_banks and residency[layer_id] != HostResidency.PINNED.value else None
+            if where is not None:
+                bank = HostBank.from_file(where[0], where[1], tuple(e["shape"]), _dtype_of(e["dtype"]))
+                row_hb[base].append(bank)
+                row_view_args[base].append(None)
+                file_mapped_bytes += e["nbytes"]
+                continue
             bank = HostBank(tuple(e["shape"]), _dtype_of(e["dtype"]), backing=_backing(layer_id))
             row_hb[base].append(bank)
             row_view_args[base].append(None)
             layer_jobs.append((base, bank, e, layer_id))
+    if file_mapped_bytes:
+        logger.info_rank0(f"expert banks: {file_mapped_bytes / 2**30:.1f} GiB file-mapped (FT_FILE_BANKS), "
+                          "paged in from disk on demand")
 
-    total_bytes = sum(e["nbytes"] for e in bank_entries)
+    total_bytes = sum(e["nbytes"] for e in bank_entries) - file_mapped_bytes
     bar = byte_bar(total_bytes, "Loading expert banks (FTW)")
 
     # Jobs are per (bank, layer) -- many small reads, so a wider pool; each bank pins
