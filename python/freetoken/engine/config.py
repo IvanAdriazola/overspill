@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 import copy
 from dataclasses import dataclass, field, replace
 from functools import cached_property
@@ -76,7 +78,7 @@ class EngineConfig:
     # < 1.0 trades retained window-prefix capacity for memory savings; must be in (0, 1]. It is the
     # DSV4 window/full ratio directly. Used only when swa_num_pages_override is None (a runtime
     # rebuild can pin an absolute window instead).
-    swa_full_tokens_ratio: float = 0.2
+    swa_full_tokens_ratio: float = float(os.environ.get("FT_SWA_RATIO", "0.2"))  # experiment: env override
     # Absolute window-pool size in the pool's own pages (usable, dummy excluded); None -> use the
     # ratio default above. A runtime cache rebuild sets this (num_swa_pages) to pin the window
     # regardless of the full anchor; the ratio is the startup default and the fallback.

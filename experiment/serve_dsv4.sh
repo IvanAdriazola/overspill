@@ -9,6 +9,7 @@ export PYTHONPATH=$HOME/src/freetoken-exp/python
 export FT_FILE_BANKS=1
 export FT_EMBED_HOST=1
 export FT_HEAD_HOST=1
+export FT_SWA_RATIO=${FT_SWA_RATIO:-1.0}
 cd ~/ft
 exec .venv/bin/ft serve --model ~/models/dsv4_reap150b_ftw --served-model-name dsv4-reap \
   --host 127.0.0.1 --port 1919 --moe-strategy cpu "$@"
