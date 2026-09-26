@@ -1700,11 +1700,16 @@ def _adjust_config(config: EngineConfig):
         num_experts = config.model_config.num_experts
         if getattr(config, "moe_cache_auto", False):
             override("moe_cache_auto", False)
-        override("moe_cache_size", 2 * num_experts)
-        override("moe_prefill_overlap", True)
+        # Tiering experiment: file-mapped banks are never pinned, so the overlap double buffer
+        # would be disabled later anyway (split residency) -- keep ONE layer and spend the
+        # other layer's VRAM (1.7 GiB on DeepSeek-V4) on KV/activations instead.
+        file_banks = os.environ.get("FT_FILE_BANKS", "").lower() in ("1", "true", "yes", "on")
+        slots = num_experts if file_banks else 2 * num_experts
+        override("moe_cache_size", slots)
+        override("moe_prefill_overlap", not file_banks)
         logger.info_rank0(
             f"MoE backend 'cpu': decode computes experts on CPU; GPU keeps a "
-            f"two-layer prefill buffer (moe_cache_size={2 * num_experts})"
+            f"{'one' if file_banks else 'two'}-layer prefill buffer (moe_cache_size={slots})"
         )
 
     if (
