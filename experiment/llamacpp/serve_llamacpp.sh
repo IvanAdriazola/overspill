@@ -31,6 +31,14 @@ ALIAS="${ALIAS:-$(basename "$MODEL" .gguf)}"
 export PATH=/usr/local/cuda/bin:$PATH
 export LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/lib/wsl/lib:${LD_LIBRARY_PATH:-}
 
+# --cuda-unified-memory (consumed here): set GGML_CUDA_ENABLE_UNIFIED_MEMORY=1, as the
+# pixi-llm-recipes setup does, so CUDA may spill allocations into host memory.
+ARGS=()
+for a in "$@"; do
+  if [ "$a" = "--cuda-unified-memory" ]; then export GGML_CUDA_ENABLE_UNIFIED_MEMORY=1; else ARGS+=("$a"); fi
+done
+set -- "${ARGS[@]}"
+
 # Experts on the CPU for every layer, unless the caller passes --n-cpu-moe N (then only the first N).
 EXPERT_PLACEMENT="--cpu-moe"
 case " $* " in *" --n-cpu-moe "*) EXPERT_PLACEMENT="" ;; esac
