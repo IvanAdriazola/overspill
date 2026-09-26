@@ -7,6 +7,7 @@ export CUDA_HOME=/usr/local/cuda
 export TVM_FFI_CUDA_ARCH_LIST=8.6 TORCH_CUDA_ARCH_LIST=8.6 FLASHINFER_CUDA_ARCH_LIST=8.6
 export PYTHONPATH=$HOME/src/freetoken-exp/python
 export FT_FILE_BANKS=1
+export FT_EMBED_HOST=1
 cd ~/ft
 exec .venv/bin/ft serve --model ~/models/dsv4_reap150b_ftw --served-model-name dsv4-reap \
   --host 127.0.0.1 --port 1919 --moe-strategy cpu "$@"

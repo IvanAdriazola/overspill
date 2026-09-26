@@ -332,6 +332,10 @@ class Engine:
             self.model = create_model(config.model_config)
         self.model.load_state_dict(self._load_weight_state_dict(config))
         finalize_quant(self.model)
+        from freetoken import experiment_embed_host
+
+        if experiment_embed_host.ENABLED:
+            experiment_embed_host.move_embeddings_to_host(self.model)
         if config.active_encoders:
             from freetoken.models.blocks import SupportsMultimodal
 
