@@ -6,6 +6,7 @@ all use it. The per-request matcher state lives in ``freetoken.scheduler.grammar
 
 from __future__ import annotations
 
+import functools
 import json
 from typing import TYPE_CHECKING, Any, List, Tuple
 
@@ -77,9 +78,11 @@ def response_format_to_constraint(response_format: dict | None) -> Tuple[str | N
     return json.dumps(schema, separators=(",", ":")), False
 
 
+@functools.lru_cache(maxsize=256)
 def validate_schema_string(schema: str) -> None:
     """Cheap tokenizer-free check so a bad schema is a 400 at the API, not a scheduler error.
-    No-op when xgrammar is not installed (the scheduler then reports the missing package)."""
+    No-op when xgrammar is not installed (the scheduler then reports the missing package).
+    Cached per schema string (a raising call is not cached, so bad schemas re-raise)."""
     try:
         import xgrammar as xgr
     except ImportError:
