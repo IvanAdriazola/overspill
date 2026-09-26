@@ -40,3 +40,21 @@ also adds a router GEMV + topk + lru_ensure. Wrong guesses (~20% at k=8) also wa
 **Lesson for the engine:** overlap only helps with the DMA copy engine (cudaMemcpyAsync, no SMs used), or
 when the bottleneck is disk rather than PCIe. For disk (two-miss) prefetch, the host issues reads, so it
 doesn't compete with GPU SMs at all. Keep the lookahead idea for the disk tier, not for RAM->VRAM on this GPU.
+
+## Prototype 2 - DeepSeek-V4-Flash REAP-150B (85 GB) on FreeToken with a disk tier (2026-09-26)
+Setup: FTW conversion (fixed a shmem-release OOM bug in the converter); all 43 expert layers file-mapped
+(`FT_FILE_BANKS`, page cache = RAM tier); expert math on FreeToken's CPU executor; embedding and LM head
+read from pinned host RAM over UVA (`FT_EMBED_HOST`, `FT_HEAD_HOST`, frees 2 GiB of VRAM); a one-layer GPU
+prefill buffer; `--max-running-requests 1`; a larger DSV4 window pool (`FT_SWA_RATIO=0.7`) so prompts
+chunk at ~2.3k tokens instead of 384 (each chunk re-streams every layer's experts).
+Same prompts as the Colibri cold run:
+| | FreeToken v10 | Colibri cold |
+|---|---|---|
+| 6.4k-token prompt, time to first token | **102 s** | 1565 s (15x slower) |
+| prefill tok/s (long) | 63 | 4.1 |
+| decode tok/s (short / coding / long) | 0.94 / 0.93 / 0.82 | 1.17 / 1.20 / 1.12 |
+v8 (384-token chunks, 17 chunks): TTFT 486 s. Chunk size is the whole prefill story: each chunk costs
+one pass over all 70 GiB of experts (disk + page cache).
+Decode still trails Colibri. Disk reads during decode run at only ~0.9 GB/s, against 2.2 GB/s during
+prefill streaming. The CPU executor pulls experts in through page faults. Next: an explicit WILLNEED /
+parallel read of the routed experts.
