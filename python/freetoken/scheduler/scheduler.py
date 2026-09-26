@@ -31,6 +31,7 @@ from freetoken.utils import (
 from .cache import CacheManager
 from .config import SchedulerConfig
 from .decode import DecodeManager
+from .grammar import GrammarError, GrammarManager, has_constraint
 from .io import SchedulerIOMixin
 from .mm import cut_image_spans, plan_mm_batch
 from .prefill import ChunkedReq, PrefillManager
@@ -122,6 +123,10 @@ class Scheduler(SchedulerIOMixin):
         self._pending_rebuild: CacheRebuildBackendMsg | None = None
         self.tokenizer = load_tokenizer(config.model_path)
         self.eos_token_ids = load_eos_token_ids(config.model_path, self.tokenizer)
+        # response_format json_schema/json_object: per-request xgrammar matchers (lazy import).
+        self.grammar = GrammarManager(
+            self.tokenizer, config.model_config.vocab_size, list(self.eos_token_ids), self.device
+        )
         self.toolcall_anchor_id = None
         if config.special_token_ckpt and (
             self.cache_manager.is_hybrid or self.cache_manager.is_swa
@@ -214,6 +219,15 @@ class Scheduler(SchedulerIOMixin):
         # Expose the un-drained batch to _process_one_msg (abort in-flight check). Assigning
         # before the message loop is what makes the check airtight: the batch launched later
         # this iteration can only be probed by messages of the NEXT iteration, which sees it here.
+        if last_data is not None and self.grammar.batch_has_constrained(last_data[0].batch.reqs):
+            # A constrained request's next-token mask depends on the token this in-flight batch
+            # is sampling, so drain it BEFORE scheduling the next batch (non-overlap step).
+            # Only batches carrying a constrained request pay this; the rest keep overlapping.
+            self._last_data = last_data
+            self.stream.wait_stream(self.engine.stream)
+            self._process_last_data(last_data)
+            self._flush_abort_acks()
+            last_data = None
         self._last_data = last_data
         blocking = not (
             last_data is not None  # don't block if we have a batch to be processed
@@ -359,6 +373,12 @@ class Scheduler(SchedulerIOMixin):
                     else None
                 )
                 finished = hit_length or hit_eos or matched_stop is not None
+                if self.grammar.is_constrained(req.uid):
+                    # Grammar termination (the stop token after a complete JSON value) or a
+                    # rejected token both end the request as "stop".
+                    accepted, terminated = self.grammar.accept(req.uid, next_token)
+                    if terminated and not finished:
+                        finished, hit_eos = True, True
                 finish_reason = (
                     ("stop" if (hit_eos or matched_stop is not None) else "length")
                     if finished
@@ -383,6 +403,7 @@ class Scheduler(SchedulerIOMixin):
 
                 # NOTE: overlap scheduling may make the request freed twice, skip second free
                 if finished and req not in self.finished_reqs:
+                    self.grammar.remove(req.uid)
                     self.decode_manager.remove_req(req)
                     self._free_req_resources(req)
                     new_finished_reqs.add(req)
@@ -541,6 +562,12 @@ class Scheduler(SchedulerIOMixin):
                 logger.warning_rank0(
                     f"Adjust max_tokens to {max_output_len} for request {msg.uid}."
                 )
+            if has_constraint(msg.sampling_params):
+                try:
+                    self.grammar.add(msg.uid, msg.sampling_params)
+                except GrammarError as exc:
+                    self.send_result([ErrorReplyMsg(uid=msg.uid, error=str(exc))])
+                    return
             self.prefill_manager.add_one_req(msg)
         elif isinstance(msg, AbortBackendMsg):
             logger.debug_rank0("Aborting request %d", msg.uid)
@@ -548,6 +575,7 @@ class Scheduler(SchedulerIOMixin):
             if tombstones is None:
                 tombstones = self._abort_tombstones = {}
             tombstones[msg.uid] = None
+            self.grammar.remove(msg.uid)
             # Unknown aborts normally consume their tombstone when the cross-worker UserMsg
             # catches up. Bound hostile/no-followup abort traffic without affecting realistic
             # in-flight concurrency.
@@ -843,9 +871,12 @@ class Scheduler(SchedulerIOMixin):
             # a captured replay (DSV4) read them in prepare_metadata / prepare_for_replay.
             batch.active_table_idx = input_mapping[0].view(-1)
         self.engine.attn_backend.prepare_metadata(batch)
+        sample_args = self.engine.sampler.prepare(batch)
+        if (mask := self.grammar.fill(batch.reqs)) is not None:
+            sample_args.token_bitmask, sample_args.bitmask_rows = mask
         return ForwardInput(
             batch=batch,
-            sample_args=self.engine.sampler.prepare(batch),
+            sample_args=sample_args,
             input_tuple=input_mapping,
             write_tuple=write_mapping,
         )

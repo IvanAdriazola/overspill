@@ -24,6 +24,11 @@ class SamplingParams:
     # Stop strings (OpenAI `stop` / Anthropic `stop_sequences`). Generation finishes when one
     # appears in the decoded output; the matched substring (and anything after) is trimmed.
     stop_strs: list[str] = field(default_factory=list)
+    # Grammar-constrained decoding (OpenAI `response_format`): a canonical JSON Schema string
+    # (json_schema) or json_object=True for "any JSON". Enforced by the scheduler's
+    # GrammarManager (xgrammar token bitmask on the logits).
+    json_schema: str | None = None
+    json_object: bool = False
 
     @property
     def is_greedy(self) -> bool:

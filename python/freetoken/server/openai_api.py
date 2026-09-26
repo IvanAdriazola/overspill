@@ -21,6 +21,12 @@ from .api_models import (
     ToolChoiceObject,
 )
 from .function_call_parser import ToolCallItem
+from freetoken.constrained import (
+    GrammarError,
+    response_format_to_constraint,
+    validate_schema_string,
+)
+from freetoken.tokenizer.effort import THINKING_OFF_KWARGS
 from .request_logger import log_request
 from .generation import (
     DEFAULT_MAX_OUTPUT_TOKENS,
@@ -157,11 +163,10 @@ async def handle_chat_completion(
         return create_error_response("function_call is not supported; use tools/tool_choice instead")
     if req.logit_bias is not None:
         return create_error_response("logit_bias is not supported")
-    if _response_format_unsupported(req.response_format):
-        return create_error_response(
-            "response_format json_object/json_schema is not supported (no constrained decoding)",
-            param="response_format",
-        )
+    try:
+        json_schema, json_object = _response_format_constraint(req.response_format)
+    except GrammarError as exc:
+        return create_error_response(str(exc), param="response_format")
     if req.n != 1:
         return create_error_response("Only n=1 is supported", param="n")
     # Case/whitespace and the "off" disable synonym stay accepted here because
@@ -188,6 +193,16 @@ async def handle_chat_completion(
         spec = chat_request_to_genspec(req, model_sampling, default_max_tokens=default_max_tokens)
     except ValueError as exc:
         return create_error_response(str(exc))
+    if json_schema is not None or json_object:
+        spec.sampling_params.json_schema = json_schema
+        spec.sampling_params.json_object = json_object
+        # The grammar starts at the first generated token, so a reasoning preamble can't be
+        # emitted: force thinking off (overrides any client toggle) so the template closes the
+        # think block and the reasoning parser leaves the JSON in `content`.
+        ctk = dict(spec.chat_template_kwargs or {})
+        ctk.pop("reasoning_effort", None)
+        ctk.update(THINKING_OFF_KWARGS)
+        spec.chat_template_kwargs = ctk
 
     if req.stream:
         # Non-stream requests already surface render failures as a clean 400
@@ -541,7 +556,7 @@ def _resolve_sampling(
     model_sampling: dict[str, Any],
     default_max_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS,
 ) -> SamplingParams:
-    return resolve_sampling(
+    params = resolve_sampling(
         temperature=req.temperature,
         top_k=req.top_k,
         top_p=req.top_p,
@@ -551,6 +566,9 @@ def _resolve_sampling(
         stop=req.stop,
         default_max_tokens=default_max_tokens,
     )
+    # Already validated by the caller (_completion_unsupported_reason / handle_chat_completion).
+    params.json_schema, params.json_object = response_format_to_constraint(req.response_format)
+    return params
 
 
 def _tools_for_template(req: ChatCompletionRequest) -> list[dict[str, Any]] | None:
@@ -643,9 +661,13 @@ def _usage(prompt_tokens: int, completion_tokens: int, cached_tokens: int = 0) -
     return usage
 
 
-def _response_format_unsupported(response_format: dict[str, Any] | None) -> bool:
-    # We have no constrained/guided decoding; only plain text ('text' or unset) is honored.
-    return response_format is not None and response_format.get("type") not in (None, "text")
+def _response_format_constraint(response_format: dict[str, Any] | None) -> tuple[str | None, bool]:
+    """(json_schema string, json_object flag) for a request's response_format; raises
+    GrammarError (-> 400) for an unsupported type or an invalid schema."""
+    json_schema, json_object = response_format_to_constraint(response_format)
+    if json_schema is not None:
+        validate_schema_string(json_schema)
+    return json_schema, json_object
 
 
 def _completion_unsupported_reason(req: CompletionRequest) -> str | None:
@@ -659,8 +681,10 @@ def _completion_unsupported_reason(req: CompletionRequest) -> str | None:
         return "suffix is not supported"
     if req.logit_bias is not None:
         return "logit_bias is not supported"
-    if _response_format_unsupported(req.response_format):
-        return "response_format json_object/json_schema is not supported (no constrained decoding)"
+    try:
+        _response_format_constraint(req.response_format)
+    except GrammarError as exc:
+        return str(exc)
     return None
 
 

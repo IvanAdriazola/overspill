@@ -15,6 +15,10 @@ class BatchSamplingArgs:
     temperatures: torch.Tensor | None
     top_k: torch.Tensor | None = None
     top_p: torch.Tensor | None = None
+    # Grammar-constrained rows (response_format): packed int32 token bitmask [n, ceil(V/32)]
+    # on device, and the batch rows it applies to. Set by the scheduler after prepare().
+    token_bitmask: torch.Tensor | None = None
+    bitmask_rows: List[int] | None = None
 
 
 def make_device_tensor(data: List, dtype: torch.dtype, device: torch.device) -> torch.Tensor:
@@ -75,6 +79,10 @@ class Sampler:
     @nvtx_annotate("Sampler")
     def sample(self, logits: torch.Tensor, args: BatchSamplingArgs) -> torch.Tensor:
         with torch.cuda.nvtx.range("Sampler"):
+            if args.token_bitmask is not None:
+                from freetoken.constrained import apply_bitmask
+
+                apply_bitmask(logits, args.token_bitmask, args.bitmask_rows)
             if args.temperatures is None:  # greedy sampling
                 return torch.argmax(logits, dim=-1)
             return sample_impl(logits.float(), args.temperatures, args.top_k, args.top_p)
