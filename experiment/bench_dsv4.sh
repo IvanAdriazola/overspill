@@ -3,8 +3,8 @@
 # Colibri cold results for comparison: short 1.17 tok/s (ttft 25.4s), coding 1.20 (17.5s), long 6446 tok ttft 1565s / 1.12 tok/s.
 # Usage: bench_dsv4.sh <label> [extra ft serve args]
 HERE=$(cd "$(dirname "$0")" && pwd)
-PY=/c/GIT/chatbot/.venv/Scripts/python.exe
-BENCH=/c/GIT/chatbot/benchmark/moe_engines/bench_openai.py
+PY=C:/GIT/chatbot/.venv/Scripts/python.exe
+BENCH=C:/GIT/chatbot/benchmark/moe_engines/bench_openai.py
 LABEL=$1; shift
 LOG="$HERE/dsv4_$LABEL.log"
 echo "=== $LABEL $(date +%H:%M:%S) args: $*" | tee "$LOG"
