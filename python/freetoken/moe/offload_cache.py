@@ -354,6 +354,10 @@ class OffloadMoeCache:
                     name, layer_id, source.shape, source.dtype,
                 )
             self.bank_sources[name] = list(per_layer)
+            _row = head[0].numel() * head.element_size()
+            print(f"[exp] slot bank {name}: {self.cache_size} x {_row / 2**20:.2f} MiB = "
+                  f"{self.cache_size * _row / 2**30:.2f} GiB; free "
+                  f"{torch.cuda.mem_get_info(self.device)[0] / 2**30:.2f} GiB", flush=True)
             self.bank_caches[name] = torch.empty(
                 (self.cache_size, *head.shape[1:]),
                 dtype=head.dtype,

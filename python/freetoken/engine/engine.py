@@ -586,6 +586,12 @@ class Engine:
         )
 
     def _init_offload_moe_cache(self, config: EngineConfig) -> OffloadMoeCache:
+        free, total = torch.cuda.mem_get_info(self.device)
+        logger.info_rank0(
+            f"[exp] before MoE cache: free {free / 2**30:.2f} / {total / 2**30:.2f} GiB, "
+            f"torch allocated {torch.cuda.memory_allocated(self.device) / 2**30:.2f} GiB, "
+            f"reserved {torch.cuda.memory_reserved(self.device) / 2**30:.2f} GiB, weights {self._weights_bytes / 2**30:.2f} GiB"
+        )
         method = shared_offload_method(self.model)
         num_moe_layers = config.model_config.num_moe_layers
         cpu_layer_ids = _resolve_cpu_layers(config, num_moe_layers, reserved=self._host_tables_bytes, method=method)
