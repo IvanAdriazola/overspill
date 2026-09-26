@@ -1,0 +1,12 @@
+=== workshop on dsv4 13:31:11
+ready after 58s
+=== 2.1_funcion_simple (daring) 13:32:09
+    -> exito=False tiempo=86.76s
+Resultados guardados en C:\GIT\chatbot\benchmark\resultados\20260926T163210Z.json
+=== 9.1_migrate_api_rename (daring) 13:33:37
+    -> exito=True tiempo=473.94s
+Resultados guardados en C:\GIT\chatbot\benchmark\resultados\20260926T163337Z.json
+=== 8.1_sec_sql_injection (rapid) 13:41:31
+    -> exito=True tiempo=543.97s
+Resultados guardados en C:\GIT\chatbot\benchmark\resultados\20260926T164132Z.json
+=== done 13:50:36

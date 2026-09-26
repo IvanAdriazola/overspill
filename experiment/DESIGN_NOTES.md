@@ -104,3 +104,8 @@ correctness rests on Validation 1 (byte-identical to stock FreeToken).
 request after a cold start; was 34 s), 10.2 s (second short prompt; was 27.5 s), 102 s (6.4k; was 99 s).
 Short prompts no longer stream all 70 GB through the page cache, which evicted the experts decode needs,
 so decode improves too. Shipped on by default. (The v13 run was contaminated by a concurrent 85 GB download.)
+
+## Validation 4 - real Workshop agent traffic on DSV4 through the disk tier
+3 Workshop tasks (tool calls, grammar-constrained JSON, multi-turn, prefix cache hits ~1.8k tokens/call):
+9.1 PASS (474 s), 8.1 PASS (544 s), 2.1 FAIL (87 s): on daring's free-text first call the model wrote its own
+`<tool_call>` markup instead of Workshop's format - a model/prompt-format mismatch, not an engine error.
