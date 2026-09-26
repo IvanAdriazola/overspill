@@ -72,7 +72,9 @@ def response_format_to_constraint(response_format: dict | None) -> Tuple[str | N
         raise GrammarError("response_format schema must be a JSON object")
     if schema is True or schema == {}:
         return None, True
-    return json.dumps(schema, sort_keys=True, separators=(",", ":")), False
+    # Keep the client's property order: xgrammar emits properties in schema order, and clients
+    # rely on it (e.g. a "reasoning" field placed before the decision fields).
+    return json.dumps(schema, separators=(",", ":")), False
 
 
 def validate_schema_string(schema: str) -> None:
