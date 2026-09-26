@@ -58,3 +58,27 @@ one pass over all 70 GiB of experts (disk + page cache).
 Decode still trails Colibri. Disk reads during decode run at only ~0.9 GB/s, against 2.2 GB/s during
 prefill streaming. The CPU executor pulls experts in through page faults. Next: an explicit WILLNEED /
 parallel read of the routed experts.
+
+### v11/v12 - WILLNEED prefetch of routed experts: GOAL MET (faster than Colibri)
+Microbench (`fault_bench.py`, cold cache, real DSV4 expert files, 6 random experts per layer, 12 threads):
+page faults 0.46-0.50 GiB/s (~155 ms/layer) vs madvise(WILLNEED)-then-touch 2.00 GiB/s (37 ms/layer) -> 4x.
+Implemented in the C++ CPU executor (`prefetch_routed` in `submit`, rebuilt via `build_cpu_moe.sh`).
+Cold run (page cache dropped first, like Colibri's cold run), same prompts:
+| | FreeToken v12 cold | Colibri cold | |
+|---|---|---|---|
+| short decode | 2.78 tok/s | 1.17 | 2.4x |
+| coding decode | 3.10 tok/s | 1.20 | 2.6x |
+| long decode | 2.69 tok/s | 1.12 | 2.4x |
+| 6.4k prompt, time to first token | 98.6 s | 1565 s | 15.9x |
+| short prompt, time to first token | 27-34 s | 17.5-25 s | Colibri better |
+The warm run (v11, ~43 GB already in the page cache) gave the same numbers, so the gain isn't a caching artifact.
+Colibri's warm run (with its saved usage history) was never measured, so its warm decode could be higher than 1.2.
+
+Remaining levers, cheapest first:
+1. Short-prompt TTFT: prefill streams ALL experts of every layer even for a 38-token prompt. Union-only
+   prefill (copy just the routed experts) should bring short TTFT to a few seconds.
+2. Next-layer disk prefetch (the lookahead idea, host-side this time, so it takes no GPU SMs): WILLNEED the
+   predicted experts of layer L+1 while layer L computes.
+3. Hot-expert residency: popularity-based (LFU) mlock of the hottest experts so the page cache can't evict
+   them (sim: LFU beats LRU for the RAM tier).
+4. Raise WSL's memory cap (48 -> ~56 GB) for more page cache.

@@ -1,0 +1,45 @@
+=== v11 04:59:08 args: --num-tokens 8192 --cuda-graph-max-bs 1 --max-running-requests 1
+ready after 55s
+{"mode": "short", "prompt_tokens": 38, "completion_tokens": 127, "chunks": 126, "ttft_s": 33.62, "prefill_tok_s": 1.1, "total_s": 78.96, "decode_tok_s": 2.78}
+TEXT: We need answer in about 250 words. Explain MoE transformer layer routing tokens to experts, why offloading experts to CPU RAM practical. Need concise.In a Mixture-of-Experts (MoE) transformer layer, each input token is routed to only a small subset of available expert sub-networks. The layer contains many expert feed-forward blocks, but a learned “router” (often a small linear projection plus softmax) computes a sparse assignment: for each token, it selects the top-$k$ experts (e.g., $k=2$) and weights their outputs by the router’s attention-like scores.
+{"mode": "short", "prompt_tokens": 51, "completion_tokens": 399, "chunks": 399, "ttft_s": 28.58, "prefill_tok_s": 1.8, "total_s": 157.83, "decode_tok_s": 3.08}
+TEXT: We need to write a Python function merge_intervals(intervals) that merges overlapping intervals. Return merged sorted list. Provide code and one sentence on time complexity. We need to output only code and one sentence. Let's craft.
+
+We'll sort intervals by start, then iterate merging. Complexity O(n log n) due to sorting, where n is number of intervals.
+
+Code:
+
+def merge_intervals(intervals):
+    if not intervals:
+        return []
+    intervals.sort(key=lambda x: x[0])
+    merged = [intervals[0]]
+    for start, end in intervals[1:]:
+        last_start, last_end = merged[-1]
+        if start <= last_end:
+            merged[-1][1] = max(last_end, end)
+        else:
+            merged.append([start, end])
+    return merged
+
+But note: intervals are lists, we mutate them. That's fine. But if we want to avoid mutating input, we can copy. Usually okay. But to be safe, we can do intervals = sorted(intervals, key=lambda x: x[0]) to avoid modifying input. But the problem says "takes a list of [start, end] pairs" - not specified if mutation allowed. Better to not mutate input. Use sorted.
+
+def merge_intervals(intervals):
+    if not intervals:
+        return []
+    intervals = sorted(intervals, key=lambda x: x[0])
+    merged = [intervals[0][:]]  # copy
+    for start, end in intervals[1:]:
+        if start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    return merged
+
+Time complexity: O(n log n) due to sorting, where n is number of intervals.
+
+We need to output only code and one sentence. So final answer:
+
+
+{"mode": "long_prompt", "prompt_tokens": 6446, "completion_tokens": 119, "chunks": 118, "ttft_s": 101.13, "prefill_tok_s": 63.7, "total_s": 141.94, "decode_tok_s": 2.89}
+TEXT: Wait, the user's message is asking me to summarize what this Python module does in 3 short bullet points. But the code they provided is truncated — it cuts off mid-function at `if not n_ctx:`. I should summarize based on what's visible, and note that the module is clearly a multi-turn agent loop with a lot of migration/refactoring context. I'll give 3 concise bullets.- Implements a multi-turn agent loop for the main chat, chaining tool results back into context until the model answers or hits a turn budget (replacing the
