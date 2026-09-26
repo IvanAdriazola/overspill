@@ -116,3 +116,11 @@ Same build and flags as the published run, but `--n-cpu-moe 42` instead of `--cp
 decode 0.58 / 0.54 / 0.49 tok/s (vs 0.54 / 0.49 / 0.38), TTFT 42 / 39 / 349 s (vs 44 / 40 / 373 s).
 Caveat: the long prompt here is 5,937 tokens (the bench was decoupled from the private module used for the
 6,446-token runs), so that row is close but not identical. Net: +10-25% for llama.cpp; Overspill still ~5-6x faster.
+
+## Validation 6 - pixi-llm-recipes flags on llama.cpp (Reddit suggestion): pathological here, aborted
+Mainline llama.cpp `81bc6b8` with that recipe's big-MoE settings: `--n-cpu-moe 42 -ub 2048`
++ `GGML_CUDA_ENABLE_UNIFIED_MEMORY=1` (the recipe targets an RTX 3090 with the model held in RAM).
+With a model bigger than RAM: ready after 582 s (vs ~106 s), a 5-token prompt took 186 s, and a 33-token prompt
+was processing at 0.18 tok/s after ~50 min. Disk reads fell to 30-60 MB/s (vs 1-2 GB/s normally). Likely cause:
+unified memory makes the GPU fault on pages that themselves have to come from disk, in tiny pieces. Aborted.
+Not yet separated: -ub 2048 alone, without unified memory.

@@ -1,0 +1,2 @@
+=== llama.cpp pixiflags 18:32:06 /home/ivan/models/dsv4_reap150b_gguf/DeepSeek-V4-Flash-0731-reap-150b-MXFP4_MOE.gguf args: --n-cpu-moe 42 -ub 2048 --cuda-unified-memory
+ready after 582s
