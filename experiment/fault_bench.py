@@ -71,11 +71,18 @@ def touch(m, start, length):
     return int(view[::PAGE].sum())  # one byte per page -> every page faulted
 
 
-def run(mode, trials):
+def run(mode, trials, seed):
+    # mapped pages survive drop_caches: unmap everything first, then drop
+    for m in maps.values():
+        m.close()
+    maps.clear()
     drop_caches()
+    for layer in range(n_layers):  # re-create the mappings, with the mode's advice
+        for t in by_layer[layer]:
+            mapping(locate(t)[0])
     for m in maps.values():
         m.madvise(mmap.MADV_SEQUENTIAL if mode == "sequential" else mmap.MADV_NORMAL)
-    rng = random.Random(0)
+    rng = random.Random(seed)
     total = 0
     t0 = time.time()
     with ThreadPoolExecutor(12) as pool:
@@ -105,5 +112,5 @@ def run(mode, trials):
           f"({dt / trials * 1000:6.0f} ms per 6-expert layer)", flush=True)
 
 
-for mode in sys.argv[3].split(",") if len(sys.argv) > 3 else ["fault", "willneed", "sequential", "pread"]:
-    run(mode, 30)
+for seed, mode in enumerate(sys.argv[3].split(",") if len(sys.argv) > 3 else ["fault", "willneed", "sequential", "pread", "fault"]):
+    run(mode, 30, seed)

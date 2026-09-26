@@ -246,6 +246,17 @@ class CpuMoeExecutor:
         self.num_threads = nthreads
         self.core_ids = core_ids
         self.isa = self._ext.isa_name()
+        # Tiering experiment: file-mapped banks -> madvise(WILLNEED) each routed expert's rows
+        # before the workers touch them (large async reads instead of page-fault-sized ones).
+        if os.environ.get("FT_FILE_BANKS", "").lower() in ("1", "true", "yes", "on") and hasattr(self._ext, "set_prefetch"):
+            tables, rows = [], []
+            for per_layer in cache.bank_sources.values():
+                if per_layer[0].dim() == 0 or per_layer[0].shape[0] != self.num_experts:
+                    continue
+                tables.append(self._make_table(list(per_layer)).data_ptr())
+                rows.append(per_layer[0][0].numel() * per_layer[0].element_size())
+            self._ext.set_prefetch(tables, rows)
+            logger.info_rank0(f"[exp] CPU MoE: WILLNEED prefetch of routed experts over {len(tables)} banks")
 
         spare = len(physical_core_cpus()) - nthreads - (1 if coord_core >= 0 else 0) - 1
         clamp = max(1, min(torch.get_num_threads(), spare))

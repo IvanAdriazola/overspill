@@ -35,6 +35,7 @@
 #if defined(__linux__)
 #include <pthread.h>
 #include <sched.h>
+#include <sys/mman.h>
 #define CPU_MOE_HAS_AFFINITY 1
 #else
 #define CPU_MOE_HAS_AFFINITY 0
@@ -1234,6 +1235,36 @@ inline const void* tbl_at(const uint64_t* tbl, int layer_id) {
 struct CpuMoeExecutor {
   int num_threads;
   int num_layers, num_experts, top_k;
+  // Tiering experiment: file-backed (mmap'd) banks. Before a task runs, madvise(WILLNEED)
+  // every routed expert's rows so the kernel reads each one with large async IOs instead of
+  // the workers pulling it in page fault by page fault (measured 4x faster from NVMe).
+  std::vector<const uint64_t*> pf_tbls;
+  std::vector<size_t> pf_rows;
+  void set_prefetch(std::vector<uintptr_t> tbls, std::vector<int64_t> rows) {
+    pf_tbls.clear();
+    pf_rows.clear();
+    for (size_t i = 0; i < tbls.size(); ++i) {
+      pf_tbls.push_back(reinterpret_cast<const uint64_t*>(tbls[i]));
+      pf_rows.push_back(static_cast<size_t>(rows[i]));
+    }
+  }
+  void prefetch_routed(const MoeTask* t) const {
+#if defined(__linux__)
+    if (pf_tbls.empty()) return;
+    const int n = t->num_tokens * top_k;
+    for (int i = 0; i < n; ++i) {
+      const int32_t e = t->ids[i];
+      if (e < 0 || e >= num_experts) continue;
+      for (size_t b = 0; b < pf_tbls.size(); ++b) {
+        const uintptr_t a = pf_tbls[b][t->layer_id] + static_cast<uintptr_t>(e) * pf_rows[b];
+        const uintptr_t s = a & ~static_cast<uintptr_t>(4095);
+        madvise(reinterpret_cast<void*>(s), pf_rows[b] + (a - s), MADV_WILLNEED);
+      }
+    }
+#else
+    (void)t;
+#endif
+  }
   int H, I;
   int act, apply_on_input;
   int fmt;                // WFmt
@@ -1890,6 +1921,7 @@ struct CpuMoeExecutor {
   }
 
   void submit(MoeTask* t) {
+    prefetch_routed(t);
     n_iblk = (I + IBLK - 1) / IBLK;
     n_hblk = (H + HBLK - 1) / HBLK;
     // Grow the per-token intermediate scratch if a larger batch shows up than the
@@ -2133,6 +2165,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
            py::arg("stream"), py::arg("task"), py::call_guard<py::gil_scoped_release>())
       .def("sync_with_cuda_stream", &CpuMoeExecutor::sync_with_cuda_stream,
            py::arg("stream"), py::arg("task"), py::call_guard<py::gil_scoped_release>())
+      .def("set_prefetch", &CpuMoeExecutor::set_prefetch, py::arg("tables"), py::arg("row_bytes"))
       .def("run_task", &CpuMoeExecutor::run_task, py::arg("task"),
            py::call_guard<py::gil_scoped_release>())
       .def("register_flag_task", &CpuMoeExecutor::register_flag_task,
