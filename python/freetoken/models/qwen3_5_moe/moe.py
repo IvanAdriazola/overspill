@@ -3,7 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import torch
-from freetoken import experiment_trace
+from freetoken.core import get_global_ctx
+from freetoken import experiment_prefetch, experiment_trace
 from freetoken.layers import (
     BaseOP,
     LinearColParallelMerged,
@@ -72,6 +73,7 @@ class Qwen3_5MoE(BaseOP):
         self.layer_id = layer_id
         self.top_k = config.num_experts_per_tok
         experiment_trace.register_gate(layer_id, self.gate)
+        experiment_prefetch.register_gate(layer_id, self.gate)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         num_tokens, hidden_dim = hidden_states.shape
@@ -82,6 +84,9 @@ class Qwen3_5MoE(BaseOP):
         router_logits = self.gate.forward(hidden_states)
         if experiment_trace.ENABLED:
             experiment_trace.record(self.layer_id, hidden_states, router_logits, self.top_k)
+        if experiment_prefetch.ENABLED and not get_global_ctx().batch.is_prefill:
+            # before the routed experts: their kernel may overwrite hidden_states in place
+            self.experts.prefetch_next_ids = experiment_prefetch.predict_next(self.layer_id, hidden_states)
         shared = self.shared_expert.forward(hidden_states)
         shared = shared * torch.sigmoid(self.shared_expert_gate.forward(hidden_states))
         routed = self.experts.forward(hidden_states=hidden_states, router_logits=router_logits)

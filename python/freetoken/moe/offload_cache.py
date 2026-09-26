@@ -1052,6 +1052,61 @@ class OffloadMoeCache:
                 self.num_indices,
             )
 
+    # ------------------------------------------------------------------
+    # Router-lookahead prefetch (experiment, see experiment_prefetch.py).
+    # Own plan buffers so it never clobbers the demand path's; the slot maps,
+    # usage and clock are shared on purpose (prefetched experts become hits).
+    # ------------------------------------------------------------------
+
+    def prefetch(self, layer_id: int, expert_ids: torch.Tensor) -> None:
+        """Make ``expert_ids`` (predicted routing of ``layer_id``) resident and copy them
+        in on a side stream. Call right after the current layer's own ``ensure_experts``:
+        those experts were just stamped most-recent, so they can't be picked as victims."""
+        from flashlib.kernels.slot_cache import lru_ensure
+
+        if not self._copy_fused_ok or layer_id in self._unpinned_layers or layer_id >= self.num_layers:
+            return
+        if not hasattr(self, "_pf_stream"):
+            plan_slots = self.evict_slots.numel()
+            self._pf_stream = torch.cuda.Stream(device=self.device)
+            self._pf_evict = torch.empty((plan_slots,), dtype=torch.int32, device=self.device)
+            self._pf_src = torch.empty((plan_slots,), dtype=torch.int32, device=self.device)
+            self._pf_num = torch.zeros((1,), dtype=torch.int64, device=self.device)
+            self._pf_pending = False
+        query = expert_ids.reshape(-1).contiguous()
+        lru_ensure(
+            query,
+            self.slot_for_id.view(-1),
+            self.id_of_slot,
+            self.usage,
+            self.step,
+            query,
+            self._pf_src,
+            self._pf_evict,
+            self._pf_num,
+            stats=None,
+            id_base=layer_id * self.num_experts,
+        )
+        from freetoken.kernel.fast_index_copy import fast_index_copy_multi_jit
+
+        self._pf_stream.wait_stream(torch.cuda.current_stream(self.device))
+        with torch.cuda.stream(self._pf_stream):
+            fast_index_copy_multi_jit(
+                self._copy_dst_ptrs,
+                self._copy_src_ptrs[layer_id],
+                self._copy_feat_bytes,
+                self._pf_evict,
+                self._pf_src,
+                self._pf_num,
+            )
+        self._pf_pending = True
+
+    def wait_prefetch(self) -> None:
+        """Join the side stream before reading any slot the prefetch may be filling."""
+        if getattr(self, "_pf_pending", False):
+            torch.cuda.current_stream(self.device).wait_stream(self._pf_stream)
+            self._pf_pending = False
+
 
 def iter_offload_moe_layers(model) -> Iterator:
     from freetoken.layers import BaseOP, OffloadMoELayer

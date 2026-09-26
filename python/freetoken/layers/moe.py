@@ -284,6 +284,14 @@ class OffloadMoELayer(MoELayer):
             return self._decode_hybrid(cache, hidden_states, topk_weights, topk_ids)
         cache.ensure_experts(self.layer_id, topk_ids)
         cache.copy_missing()
+        # Lookahead (experiment): the previous layer may still be copying experts this
+        # layer is about to read; then start copying the next layer's predicted experts
+        # behind this layer's GEMM.
+        cache.wait_prefetch()
+        next_ids = getattr(self, "prefetch_next_ids", None)
+        if next_ids is not None:
+            self.prefetch_next_ids = None
+            cache.prefetch(self.layer_id + 1, next_ids)
         return self._expert_gemm(
             cache,
             hidden_states,
