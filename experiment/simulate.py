@@ -18,7 +18,10 @@ import argparse
 import glob
 import heapq
 import json
+import pickle
 import re
+import time
+from pathlib import Path
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from itertools import product
@@ -56,8 +59,13 @@ def load(trace_dir: str) -> Trace:
     recs = []
     for f in files:
         z = np.load(f)
-        for i in range(int(z["n"])):
-            recs.append({k.split(".", 1)[1]: z[k] for k in z.files if k.startswith(f"{i}.")})
+        chunk = [dict() for _ in range(int(z["n"]))]
+        for key in z.files:
+            if key == "n":
+                continue
+            i, name = key.split(".", 1)
+            chunk[int(i)][name] = z[key]
+        recs.extend(chunk)
     tr = Trace()
     step: list = []
     for r in recs:
@@ -177,10 +185,17 @@ class Belady:
     def insert(self, e, protect=(), nxt=None):
         if self.cap <= 0 or nxt is None:
             return
+        skipped = []
         while len(self.members) >= self.cap:
             neg, victim = heapq.heappop(self.heap)
-            if self.members.get(victim) == -neg and victim not in protect:
-                del self.members[victim]
+            if self.members.get(victim) != -neg:
+                continue  # stale entry
+            if victim in protect:
+                skipped.append((neg, victim))  # in use this layer: keep, retry after
+                continue
+            del self.members[victim]
+        for item in skipped:
+            heapq.heappush(self.heap, item)
         self.members[e] = nxt
         heapq.heappush(self.heap, (-nxt, e))
 
@@ -331,10 +346,11 @@ _TR: Trace | None = None
 _NXT = None
 
 
-def _init(path):
+def _init_globals(tr):
+    # Set before the Pool is created: workers are forked and inherit them.
     global _TR, _NXT
-    _TR = load(path)
-    _NXT = next_uses(_TR)
+    _TR = tr
+    _NXT = next_uses(tr)
 
 
 def _run(cfg):
@@ -348,7 +364,14 @@ def main():
     ap.add_argument("--workers", type=int, default=10)
     args = ap.parse_args()
 
-    tr = load(args.trace_dir)
+    t0 = time.time()
+    cache = Path(args.trace_dir) / "_parsed.pkl"
+    if cache.exists():
+        tr = pickle.loads(cache.read_bytes())
+    else:
+        tr = load(args.trace_dir)
+        cache.write_bytes(pickle.dumps(tr))
+    print(f"loaded in {time.time() - t0:.0f}s", flush=True)
     print(f"decode steps {len(tr.decode)}, prefill chunks {len(tr.prefill)} ({sum(tr.prefill_tokens)} tokens)")
 
     # Calibrate compute: the real FreeToken config (all experts in RAM, LRU VRAM, whole-layer prefill)
@@ -371,8 +394,9 @@ def main():
             continue  # everything in RAM: RAM policy and disk don't matter
         grid.append(dict(vram=vram, ram=ram, vram_slots=REAL_VRAM_SLOTS, ram_slots=int(TOTAL * ram_frac),
                          ram_frac=ram_frac, prefetch=pf, prefill=prefill, disk=disk))
-    print(f"{len(grid)} configs")
-    with Pool(args.workers, initializer=_init, initargs=(args.trace_dir,)) as pool:
+    print(f"{len(grid)} configs", flush=True)
+    _init_globals(tr)
+    with Pool(args.workers) as pool:
         results = [with_time(r, compute_ms) for r in pool.map(_run, grid)]
     json.dump({"compute_ms": compute_ms, "base": base, "results": results}, open(args.out, "w"), indent=1)
 

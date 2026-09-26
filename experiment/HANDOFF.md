@@ -42,6 +42,18 @@
   A server started with nohup dies with its wsl.exe, so keep it in the foreground of a live wsl.exe.
   `pkill -f` patterns can match your own shell: kill by PID from a script file.
 
+## Pitfalls hit while capturing traces (2026-09-26)
+- **Windows→Git Bash mangles absolute POSIX args:** `/home/ivan/x` passed from Windows Python became
+  `C:/Program Files/Git/home/ivan/x`. Pass bare names and let the WSL-side script build paths
+  (`serve_trace.sh <trace_name>` → `~/traces/<name>/`).
+- **The Python GPU-lock wrapper died about 32 min after launch as a background Bash job, with no message.**
+  Its children (the server and the benchmark) kept running and the lock file stayed. My hypothesis, not
+  confirmed: the background shell killed its direct child only. For long GPU jobs, check the processes;
+  don't trust the wrapper's exit code. Stop the server with `stop_server.sh` and remove
+  `benchmark/.gpu_lock` by hand.
+- Task 1.3 printed no result line in the traced run (no result JSON either). Its routing trace is still valid.
+- Without CUDA graphs (`--graph 0`), decode runs at ~10-24 tok/s. The routing is identical, because decoding is greedy.
+
 ## Measured baselines (Qwen3.6-35B-A3B, RTX 3060)
 | engine | decode tok/s | prefill tok/s |
 |---|---|---|
