@@ -73,3 +73,13 @@ Full docs: `C:\GIT\chatbot\benchmark\moe_engines\{FREETOKEN_COLIBRI_EXPLAINED,EN
 - In autonomous work: make the call, log it, keep going.
 - End goal: the user's own engine written from scratch; this tree is a throwaway prototype.
   Credit FreeToken and Colibri for the ideas.
+
+## Status update (2026-09-26 ~05:15): DeepSeek-V4-Flash REAP-150B runs faster than Colibri
+- Serve: `bench_dsv4.sh <label> --num-tokens 8192 --cuda-graph-max-bs 1 --max-running-requests 1`,
+  launched with `WSLENV=FT_SWA_RATIO FT_SWA_RATIO=0.7` under the GPU lock (serve config: `serve_dsv4.sh`).
+- The model is `~/models/dsv4_reap150b_ftw` (FTW, 80 GB). The rebuilt CPU MoE .so lives in `~/src/freetoken-exp`
+  (built by `build_cpu_moe.sh`; `sync_to_wsl.sh` keeps it, since `cp -n` won't overwrite it).
+- Results and the lever list: see `DESIGN_NOTES.md`, "Prototype 2".
+- Pitfalls: env vars reach WSL only via `WSLENV`; `MSYS_NO_PATHCONV=1` is inherited, so use `C:/` paths
+  in scripts; Python on Windows writes CRLF (use `newline="\n"` for .sh files); FreeToken's API outlives a
+  dead backend (it answers 503), so check the serve log.
