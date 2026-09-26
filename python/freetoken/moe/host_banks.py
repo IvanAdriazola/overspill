@@ -179,6 +179,12 @@ class HostBank:
         For buffers that are done being read (the converter). No-op for born-pinned banks: registered pages cannot be dropped."""
         if self._pinned:
             return
+        # mmap.mmap(-1, n) is a SHARED anonymous mapping (shmem): DONTNEED only unmaps, the pages
+        # stay allocated -- converting a model bigger than RAM then OOMs. MADV_REMOVE frees them.
+        try:
+            self._buf.madvise(mmap.MADV_REMOVE)
+        except (AttributeError, OSError):
+            pass
         self._buf.madvise(mmap.MADV_DONTNEED)
 
     def lock(self) -> None:
