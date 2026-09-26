@@ -31,6 +31,10 @@ ALIAS="${ALIAS:-$(basename "$MODEL" .gguf)}"
 export PATH=/usr/local/cuda/bin:$PATH
 export LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/lib/wsl/lib:${LD_LIBRARY_PATH:-}
 
+# Experts on the CPU for every layer, unless the caller passes --n-cpu-moe N (then only the first N).
+EXPERT_PLACEMENT="--cpu-moe"
+case " $* " in *" --n-cpu-moe "*) EXPERT_PLACEMENT="" ;; esac
+
 set -x
 exec "$LLAMA_BIN/llama-server" \
   --model "$MODEL" \
@@ -39,7 +43,7 @@ exec "$LLAMA_BIN/llama-server" \
   --ctx-size "$CTX" \
   --parallel 1 \
   --n-gpu-layers 99 \
-  --cpu-moe \
+  $EXPERT_PLACEMENT \
   --flash-attn on \
   --load-mode mmap \
   --threads "$THREADS" --threads-batch "$THREADS" \
