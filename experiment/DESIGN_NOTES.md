@@ -88,3 +88,13 @@ Qwen3.6-35B-A3B FTW, `--moe-strategy cpu`, greedy, 5 prompts (3 short, 1 long 6k
 stock vs tier (FT_FILE_BANKS + WILLNEED + FT_EMBED_HOST + FT_HEAD_HOST) vs tier_nohead -> **byte-identical
 outputs, 5/5 for both** (`qwentier_*.log`). Speed on a model that fits in RAM is unchanged within noise
 (stock 25-27, tier 22-28, tier_nohead 28-31 tok/s).
+
+## Validation 2 - vs Colibri warm and llama.cpp, same model (2026-09-26)
+Colibri warm (prime session + warm page cache; no usage-history file was written): decode 1.19 / 1.24 / 1.16,
+TTFT 26 / 18 / 1557 s -> same as cold.
+llama.cpp `81bc6b8` (CUDA sm_86), `DeepSeek-V4-Flash-0731-reap-150b-MXFP4_MOE.gguf` (85.05 GB, same FP4
+experts), `-ngl 99 --cpu-moe --flash-attn on --load-mode mmap -t 11`, cold: decode 0.54 / 0.49 / 0.38 tok/s,
+TTFT 44 / 40 / 373 s, ~1.0 GB/s average disk reads. Answers correct.
+=> this fork: ~5-7x llama.cpp decode, 3.8x long-prompt TTFT, and faster short-prompt TTFT than llama.cpp.
+Cross-engine token equality isn't expected (llama.cpp keeps attention in Q8_0, FreeToken in FP8); layer
+correctness rests on Validation 1 (byte-identical to stock FreeToken).
