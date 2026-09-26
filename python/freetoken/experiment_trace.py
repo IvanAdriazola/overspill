@@ -6,14 +6,15 @@ the real top-k expert ids of this layer, and a lookahead prediction for the
 next layer (next layer's router applied to this layer's MoE input - the
 cheapest router-lookahead signal a prefetcher could use).
 
-One ``.npz`` per forward pass (all layers of one batch step) is too many
-files, so records are buffered and flushed every ``_FLUSH_EVERY`` steps.
+Records are buffered and written by a daemon thread every ``_FLUSH_SECONDS``
+(the server is usually killed, not exited, so atexit alone loses the tail).
 """
 
 from __future__ import annotations
 
 import atexit
 import os
+import threading
 import time
 from pathlib import Path
 
@@ -23,14 +24,12 @@ import torch
 _DIR = os.environ.get("FT_ROUTE_TRACE")
 ENABLED = bool(_DIR)
 _LOOKAHEAD_K = 16
-_FLUSH_EVERY = 256
 
 _gates: dict[int, torch.nn.Module] = {}
 _buf: list[dict] = []
-_FLUSH_SECONDS = 20
-_step = 0
+_FLUSH_SECONDS = 5
 _chunk = 0
-_last_flush = time.time()
+_lock = threading.Lock()
 
 
 def register_gate(layer_id: int, gate) -> None:
@@ -41,7 +40,6 @@ def register_gate(layer_id: int, gate) -> None:
 def record(layer_id: int, hidden_states: torch.Tensor, router_logits: torch.Tensor, top_k: int) -> None:
     """Called from the MoE block before the routed experts run (the expert
     kernel may overwrite ``hidden_states`` in place)."""
-    global _step
     from freetoken.core import get_global_ctx
 
     batch = get_global_ctx().batch
@@ -65,30 +63,33 @@ def record(layer_id: int, hidden_states: torch.Tensor, router_logits: torch.Tens
     if nxt is not None and not batch.is_prefill:
         pred = torch.topk(nxt.forward(hidden_states), _LOOKAHEAD_K, dim=-1).indices
         rec["pred_next"] = pred.to(torch.int16).cpu().numpy()
-    _buf.append(rec)
-    if layer_id == 0:
-        _step += 1
-        # The server may be killed rather than exit cleanly, so flush on a
-        # timer too, at a step boundary.
-        if _step % _FLUSH_EVERY == 0 or time.time() - _last_flush > _FLUSH_SECONDS:
-            flush()
-
-
-if ENABLED:
-    atexit.register(lambda: flush())
+    with _lock:
+        _buf.append(rec)
 
 
 def flush() -> None:
-    global _chunk, _last_flush
-    _last_flush = time.time()
-    if not _buf:
+    global _chunk
+    with _lock:
+        records = _buf[:]
+        _buf.clear()
+    if not records:
         return
     out = Path(_DIR)
     out.mkdir(parents=True, exist_ok=True)
     arrays = {}
-    for i, rec in enumerate(_buf):
+    for i, rec in enumerate(records):
         for key, value in rec.items():
             arrays[f"{i}.{key}"] = np.asarray(value)
-    np.savez_compressed(out / f"trace_{int(time.time())}_{_chunk:05d}.npz", n=len(_buf), **arrays)
+    np.savez_compressed(out / f"trace_{int(time.time())}_{_chunk:05d}.npz", n=len(records), **arrays)
     _chunk += 1
-    _buf.clear()
+
+
+def _flusher() -> None:
+    while True:
+        time.sleep(_FLUSH_SECONDS)
+        flush()
+
+
+if ENABLED:
+    atexit.register(flush)
+    threading.Thread(target=_flusher, name="route-trace-flush", daemon=True).start()
