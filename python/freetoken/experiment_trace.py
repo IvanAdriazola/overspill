@@ -12,6 +12,7 @@ files, so records are buffered and flushed every ``_FLUSH_EVERY`` steps.
 
 from __future__ import annotations
 
+import atexit
 import os
 import time
 from pathlib import Path
@@ -26,8 +27,10 @@ _FLUSH_EVERY = 256
 
 _gates: dict[int, torch.nn.Module] = {}
 _buf: list[dict] = []
+_FLUSH_SECONDS = 20
 _step = 0
 _chunk = 0
+_last_flush = time.time()
 
 
 def register_gate(layer_id: int, gate) -> None:
@@ -46,22 +49,38 @@ def record(layer_id: int, hidden_states: torch.Tensor, router_logits: torch.Tens
     rec = {
         "layer": layer_id,
         "prefill": batch.is_prefill,
+        "t": time.time(),
         "uids": np.array([r.uid for r in batch.reqs], dtype=np.int64),
-        "ids": ids.to(torch.int16).cpu().numpy(),
+        "n_tokens": ids.shape[0],
     }
+    if batch.is_prefill:
+        # Prefill only needs which experts the chunk touches (and how often),
+        # not the per-token order: keeps traces small.
+        uniq, counts = torch.unique(ids, return_counts=True)
+        rec["uniq"] = uniq.to(torch.int16).cpu().numpy()
+        rec["counts"] = counts.to(torch.int32).cpu().numpy()
+    else:
+        rec["ids"] = ids.to(torch.int16).cpu().numpy()
     nxt = _gates.get(layer_id + 1)
-    if nxt is not None:
+    if nxt is not None and not batch.is_prefill:
         pred = torch.topk(nxt.forward(hidden_states), _LOOKAHEAD_K, dim=-1).indices
         rec["pred_next"] = pred.to(torch.int16).cpu().numpy()
     _buf.append(rec)
     if layer_id == 0:
         _step += 1
-        if _step % _FLUSH_EVERY == 0:
+        # The server may be killed rather than exit cleanly, so flush on a
+        # timer too, at a step boundary.
+        if _step % _FLUSH_EVERY == 0 or time.time() - _last_flush > _FLUSH_SECONDS:
             flush()
 
 
+if ENABLED:
+    atexit.register(lambda: flush())
+
+
 def flush() -> None:
-    global _chunk
+    global _chunk, _last_flush
+    _last_flush = time.time()
     if not _buf:
         return
     out = Path(_DIR)
