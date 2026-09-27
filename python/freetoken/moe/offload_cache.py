@@ -1014,6 +1014,22 @@ class OffloadMoeCache:
             "norm_entropy": norm_ent,
         }
 
+    def _win_direct_reader(self):
+        """Native Windows: the direct-read prefill reader for file-backed unpinned layers (None = not
+        applicable, e.g. Linux, FT_WIN_DIRECT=0, or banks that are not file-backed). Built on first use."""
+        state = getattr(self, "_win_direct_state", None)
+        if state is None:
+            from freetoken.moe import win_direct_reader as wdr
+
+            reader = None
+            if wdr.ENABLED and self._unpinned_layers:
+                try:
+                    reader = wdr.WinDirectLayerReader(self.banks, frozenset(self._unpinned_layers))
+                except Exception as exc:  # noqa: BLE001 -- fall back to the mapping path
+                    logger.warning(f"Windows direct prefill reads disabled: {exc}")
+            state = self._win_direct_state = (reader,)
+        return state[0]
+
     def copy_missing(self) -> None:
         assert self.banks, "set_bank_sources must register the banks first"
         layer_id = self._pending_src_layer
@@ -1027,6 +1043,10 @@ class OffloadMoeCache:
                 )
             # the only copy a non-pinned layer ever needs is the non-overlap prefill materialize, which schedules the whole layer into slots [0, num_experts) with position == expert id -- a plain synchronous pageable H2D copy
             # never CUDA-graph captured: prefill is not captured, and decode never reaches this branch (it routes to the CPU executor)
+            reader = self._win_direct_reader()
+            if reader is not None:
+                reader.copy_layer(layer_id, self.banks, self.num_experts)
+                return
             if _WIN_PREFETCH:
                 # Windows: page faults on a file mapping read in small pieces (~360 MB/s for this copy on
                 # Flash-Next vs ~1 GB/s under Linux readahead). Queue this layer's banks and the next

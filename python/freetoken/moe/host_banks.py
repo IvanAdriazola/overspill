@@ -56,6 +56,9 @@ _DEFAULT_CHUNK = 8 << 20
 
 # Hold the mmaps for the process lifetime; the offload cache reads from these banks forever.
 _LIVE_BUFFERS: list[mmap.mmap] = []
+# File-backed banks (HostBank.from_file): tensor address -> (path, file offset, nbytes), so a reader that can
+# beat the mapping (native Windows' direct prefill reads) can go to the file itself.
+FILE_BANK_SOURCES: dict[int, tuple[str, int, int]] = {}
 
 def _env_born_pinned() -> bool | None:
     """``FREETOKEN_BANK_CUDA_ALLOC`` tri-state: unset -> ``None`` (default applies), else the parsed boolean."""
@@ -147,6 +150,7 @@ class HostBank:
         self._pinned = False
         self._locked = False
         self._file = True
+        FILE_BANK_SOURCES[self.addr] = (path, offset, self.nbytes)
         return self
 
     @property

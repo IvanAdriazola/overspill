@@ -25,9 +25,14 @@ until [ "$(curl -s -m 1200 -o /dev/null -w '%{http_code}' http://127.0.0.1:1920/
 done
 echo "ready after $(( $(date +%s) - t0 ))s" | tee -a "$LOG"
 if kill -0 $SRV 2>/dev/null; then
-  "$PY" "$BENCH" http://127.0.0.1:1920 flashnext 1 '{"max_tokens": 128, "_full_text": true}' 2>&1 | tee -a "$LOG"
-  "$PY" "$BENCH" http://127.0.0.1:1920 flashnext 1 '{"max_tokens": 400, "_full_text": true, "_prompt": "Write a Python function merge_intervals(intervals) that takes a list of [start, end] pairs and returns the merged, sorted list of non-overlapping intervals. Give only the code and one sentence on its time complexity."}' 2>&1 | tee -a "$LOG"
-  "$PY" "$BENCH" http://127.0.0.1:1920 flashnext 1 '{"_long_prompt": true, "_full_text": true}' 2>&1 | tee -a "$LOG"
+if [ -n "$QUICK" ]; then  # QUICK=1: decode tok/s only - 64 tokens on each short prompt, no long prompt (~2-4 min)
+  "$PY" "$BENCH" http://127.0.0.1:1920 flashnext 1 '{"max_tokens": 64, "_full_text": true}' 2>&1 | tee -a "$LOG"
+  "$PY" "$BENCH" http://127.0.0.1:1920 flashnext 1 '{"max_tokens": 64, "_full_text": true, "_prompt": "Write a Python function merge_intervals(intervals) that takes a list of [start, end] pairs and returns the merged, sorted list of non-overlapping intervals. Give only the code and one sentence on its time complexity."}' 2>&1 | tee -a "$LOG"
+else
+    "$PY" "$BENCH" http://127.0.0.1:1920 flashnext 1 '{"max_tokens": 128, "_full_text": true}' 2>&1 | tee -a "$LOG"
+    "$PY" "$BENCH" http://127.0.0.1:1920 flashnext 1 '{"max_tokens": 400, "_full_text": true, "_prompt": "Write a Python function merge_intervals(intervals) that takes a list of [start, end] pairs and returns the merged, sorted list of non-overlapping intervals. Give only the code and one sentence on its time complexity."}' 2>&1 | tee -a "$LOG"
+    "$PY" "$BENCH" http://127.0.0.1:1920 flashnext 1 '{"_long_prompt": true, "_full_text": true}' 2>&1 | tee -a "$LOG"
+  fi
 fi
 for pid in $(MSYS_NO_PATHCONV=1 tasklist.exe /FI "IMAGENAME eq llama-server.exe" /FO CSV /NH | grep -i llama-server | cut -d, -f2 | tr -d '"'); do MSYS_NO_PATHCONV=1 taskkill.exe /F /PID "$pid" >/dev/null 2>&1; done
 kill $SRV $MON 2>/dev/null
