@@ -430,7 +430,7 @@ def read_file_into(buf: memoryview | mmap.mmap, path: str, *, workers: int = 8,
     if drop_cache:
         try:
             fd0 = os.open(path, os.O_RDONLY)
-            os.posix_fadvise(fd0, 0, 0, os.POSIX_FADV_DONTNEED)
+            hasattr(os, "posix_fadvise") and os.posix_fadvise(fd0, 0, 0, os.POSIX_FADV_DONTNEED)
             os.close(fd0)
         except OSError:
             pass
@@ -481,7 +481,7 @@ def read_range_into(buf: memoryview | mmap.mmap, path: str, *, file_offset: int,
     if drop_cache:
         try:
             fd0 = os.open(path, os.O_RDONLY)
-            os.posix_fadvise(fd0, file_offset, nbytes, os.POSIX_FADV_DONTNEED)
+            hasattr(os, "posix_fadvise") and os.posix_fadvise(fd0, file_offset, nbytes, os.POSIX_FADV_DONTNEED)
             os.close(fd0)
         except OSError:
             pass

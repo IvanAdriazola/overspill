@@ -109,7 +109,7 @@ def iter_expert_tensors_parallel(
                 if drop_cache:
                     try:
                         fd = os.open(path, os.O_RDONLY)
-                        os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
+                        hasattr(os, "posix_fadvise") and os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
                         os.close(fd)
                     except OSError:
                         pass
