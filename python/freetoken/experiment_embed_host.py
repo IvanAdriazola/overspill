@@ -26,6 +26,9 @@ def _flag(name: str) -> bool:
 
 EMBED = _flag("FT_EMBED_HOST")
 HEAD = _flag("FT_HEAD_HOST")
+# FT_HEAD_I8=1: store the host LM head as per-row int8 -- halves the per-token PCIe stream
+# (Qwen3.8-Flash-Next: 1.27 -> 0.64 GB/token, ~36 ms of a ~155 ms decode step at bf16).
+HEAD_I8 = _flag("FT_HEAD_I8")
 ENABLED = EMBED or HEAD
 
 
@@ -75,6 +78,24 @@ def _host_gemv_kernel(w_addr, x_ptr, y_ptr, V, D: tl.constexpr, BLOCK_V: tl.cons
     tl.store(y_ptr + m * V + rows, acc.to(y_ptr.dtype.element_ty), mask=rmask)
 
 
+@triton.jit
+def _host_gemv_i8_kernel(w_addr, s_ptr, x_ptr, y_ptr, V, D: tl.constexpr, BLOCK_V: tl.constexpr, BLOCK_D: tl.constexpr):
+    """y[m, v] = s[v] * sum_d W[v, d] * x[m, d] with int8 W at a raw (host, UVA-mapped) address."""
+    pid = tl.program_id(0)
+    m = tl.program_id(1)
+    rows = pid * BLOCK_V + tl.arange(0, BLOCK_V)
+    rmask = rows < V
+    w = w_addr.to(tl.int64).to(tl.pointer_type(tl.int8))
+    acc = tl.zeros([BLOCK_V], dtype=tl.float32)
+    for d0 in range(0, D, BLOCK_D):
+        cols = d0 + tl.arange(0, BLOCK_D)
+        x = tl.load(x_ptr + m * D + cols).to(tl.float32)
+        wt = tl.load(w + rows[:, None].to(tl.int64) * D + cols[None, :], mask=rmask[:, None], other=0)
+        acc += tl.sum(wt.to(tl.float32) * x[None, :], axis=1)
+    s = tl.load(s_ptr + rows, mask=rmask, other=0.0)
+    tl.store(y_ptr + m * V + rows, (acc * s).to(y_ptr.dtype.element_ty), mask=rmask)
+
+
 def _head_forward(self, x: torch.Tensor) -> torch.Tensor:
     from freetoken.core import get_global_ctx
 
@@ -85,8 +106,26 @@ def _head_forward(self, x: torch.Tensor) -> torch.Tensor:
     rows, dim = self._host_rows, self._host_dim
     out = torch.empty((x.shape[0], rows), dtype=x.dtype, device=x.device)
     grid = (triton.cdiv(rows, 16), x.shape[0])
-    _host_gemv_kernel[grid](self._host_ptr, x, out, rows, D=dim, BLOCK_V=16, BLOCK_D=256, num_warps=4)
+    if self._host_scale is not None:
+        _host_gemv_i8_kernel[grid](self._host_ptr, self._host_scale, x, out, rows, D=dim, BLOCK_V=16, BLOCK_D=256, num_warps=4)
+    else:
+        _host_gemv_kernel[grid](self._host_ptr, x, out, rows, D=dim, BLOCK_V=16, BLOCK_D=256, num_warps=4)
     return out
+
+
+def _quantize_rows_i8(w: torch.Tensor, chunk: int = 16384):
+    """Symmetric per-row int8 of a (CUDA) bf16 matrix: returns (host int8 bank, CUDA fp32 scales)."""
+    from freetoken.moe.host_banks import HostBank
+
+    rows = w.shape[0]
+    bank = HostBank(tuple(w.shape), torch.int8)
+    scale = torch.empty(rows, dtype=torch.float32, device=w.device)
+    for r0 in range(0, rows, chunk):
+        blk = w[r0 : r0 + chunk].float()
+        s = blk.abs().amax(dim=1).clamp_min(1e-12) / 127.0
+        scale[r0 : r0 + chunk] = s
+        bank.tensor[r0 : r0 + chunk].copy_((blk / s[:, None]).round_().clamp_(-127, 127).to(torch.int8))
+    return bank, scale
 
 
 def move_embeddings_to_host(model) -> int:
@@ -106,8 +145,12 @@ def move_embeddings_to_host(model) -> int:
         w = op.weight
         if not w.is_cuda or op.tp_size != 1 or w.dtype != torch.bfloat16 or op._embed_scale is not None:
             continue
-        bank = HostBank(tuple(w.shape), w.dtype)
-        bank.tensor.copy_(w)
+        op._host_scale = None
+        if is_head and HEAD_I8:
+            bank, op._host_scale = _quantize_rows_i8(w)
+        else:
+            bank = HostBank(tuple(w.shape), w.dtype)
+            bank.tensor.copy_(w)
         bank.pin()
         op._host_bank = bank
         op._host_rows, op._host_dim = w.shape
