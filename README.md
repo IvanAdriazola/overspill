@@ -21,44 +21,41 @@ hierarchy under it.
 
 ## Results
 
-> **Correction (2026-09-27): the llama.cpp numbers below are not representative.** llama.cpp ran inside
-> the same WSL2 VM as the other engines, and WSL2's virtual disk defaults to an 8 MB read-ahead, which
-> cripples llama.cpp's mmap page-fault reads of experts that are not in RAM (on another MoE model the same
-> setting took llama.cpp from ~7 tok/s down to 0.8 tok/s). So the "6-7x llama.cpp" comparison below mostly
-> measures that WSL handicap, not the engines. Overspill has since been ported to native Windows and both
-> engines are being re-run natively, like for like: first native results on this model show decode roughly
-> **tied** with a tuned native llama.cpp, with Overspill ahead on time to first token. Updated numbers will
-> replace this section; details and raw logs are in
-> [`experiment/DESIGN_NOTES.md`](experiment/DESIGN_NOTES.md) (Validations 7 and 8).
-
 DeepSeek-V4-Flash REAP-150B (`puwaer/DeepSeek-V4-Flash-0731-reap-150b`, 85 GB with FP4 experts). The model
-is **bigger than RAM**: the machine has 64 GB, but every engine ran inside the same WSL2 VM capped at 48 GB.
-Hardware: RTX 3060 12 GB, Ryzen 9 7900, DDR5-6000, NVMe (through WSL2's virtual disk). All runs are on this
-same PC, start cold (page cache dropped), use greedy decoding, and use the same three prompts: a short
-explanation, a coding question, and a 6,446-token Python-module summary (a private module; the published
-[`experiment/bench_openai.py`](experiment/bench_openai.py) defaults to a FreeToken source file of similar size,
-~5.9k tokens).
+is **bigger than RAM**. Hardware: RTX 3060 12 GB, Ryzen 9 7900, DDR5-6000, NVMe, 64 GB of RAM. Greedy decoding,
+same three prompts for every engine: a short explanation, a coding question, and a long Python-module summary
+(6,446 tokens for the WSL runs, 5,971 tokens for the native llama.cpp run; the published
+[`experiment/bench_openai.py`](experiment/bench_openai.py) defaults to a FreeToken source file of that size).
 
-| | Overspill | Colibri (cold) | Colibri (warm) | llama.cpp (MXFP4_MOE, experts mmap'd on CPU) |
+- **Overspill** ran inside WSL2 capped at 48 GB, starting cold (page cache dropped).
+- **llama.cpp** ran **natively on Windows** with all 64 GB, warm, with its best configuration from a sweep
+  (`--cpu-moe -ub 2048`, build b11205). This is the fair baseline: see the note below on why llama.cpp must
+  not be benchmarked inside WSL.
+- **Colibri** ran inside the same 48 GB WSL2 VM as Overspill.
+
+| | Overspill (WSL, 48 GB, cold) | llama.cpp (native, 64 GB, warm, best config) | Colibri (WSL, cold) | Colibri (WSL, warm) |
 |---|---|---|---|---|
-| decode, short prompt | **3.21 tok/s** | 1.17 | 1.19 | 0.54 |
-| decode, coding prompt | **3.37 tok/s** | 1.20 | 1.24 | 0.49 |
-| decode, after a 6.4k prompt | **2.75 tok/s** | 1.12 | 1.16 | 0.38 |
-| time to first token, 6.4k-token prompt | **102 s** | 1565 s | 1557 s | 373 s |
-| time to first token, first short prompt after a cold start | 43 s | **25 s** | 26 s | 44 s |
-| time to first token, next short prompt | **10 s** | 18 s | 18 s | 40 s |
+| decode, short prompt | **3.21 tok/s** | 2.43 | 1.17 | 1.19 |
+| decode, coding prompt | **3.37 tok/s** | **3.38** | 1.20 | 1.24 |
+| decode, after the long prompt | **2.75 tok/s** | 2.40 | 1.12 | 1.16 |
+| time to first token, long prompt | **102 s** | 371 s | 1565 s | 1557 s |
+| time to first token, first short prompt | 43 s (cold start) | 31 s (warm) | **25 s** | 26 s |
+| time to first token, next short prompt | **10 s** | 26 s | 18 s | 18 s |
 
-That is about **2.7x Colibri** on decode and **15x Colibri on a 6.4k-token prompt**. (The llama.cpp column
-is affected by the WSL read-ahead issue described in the correction above; the "6-7x llama.cpp" originally
-stated here does not hold for llama.cpp run natively.) On the very first request after a cold start, Colibri is quicker to the first token.
-All three use the same model with the same FP4 experts. The ~8 GB of non-expert weights differ slightly:
-llama.cpp's GGUF stores them in Q8_0, while FreeToken and Colibri use DeepSeek's original FP8, so outputs
-are not bit-identical across engines. Colibri "warm" = a second session with a warm page cache. Exact
-commands for every engine are [below](#how-each-engine-was-run).
+Against llama.cpp at its best, Overspill decodes **up to 32% faster** (and is even with it on the coding prompt) and reaches
+the first token of a long prompt **3.6x faster** (2.6x on the second short prompt), despite running in a VM
+with 16 GB less RAM. Against Colibri it is **2.7x faster on decode** and **15x faster on the long prompt**.
+Colibri is quickest to the very first token after a cold start. All engines use the same FP4 experts; the
+~8 GB of non-expert weights differ slightly (llama.cpp's GGUF stores them in Q8_0, FreeToken and Colibri use
+DeepSeek's original FP8), so outputs are not bit-identical. Exact commands are
+[below](#how-each-engine-was-run); raw logs and analysis are in
+[`experiment/DESIGN_NOTES.md`](experiment/DESIGN_NOTES.md) (Validations 7 and 8).
 
-llama.cpp with `--n-cpu-moe 42` instead of `--cpu-moe` (one layer's experts on the GPU, which is all that
-fits on 12 GB) gets 0.58 / 0.54 / 0.49 tok/s decode and 42 / 39 s short-prompt TTFT, a 10-25% gain
-([log](experiment/results/llamacpp_ncpumoe42.log)).
+> **Correction (2026-09-27).** An earlier version of this table compared against llama.cpp run *inside* the
+> same WSL2 VM (0.54 / 0.49 / 0.38 tok/s, 373 s to the first token of the long prompt) and claimed "6-7x
+> llama.cpp". That was unfair to llama.cpp: WSL2's virtual disk defaults to an 8 MB read-ahead, which cripples
+> llama.cpp's mmap page-fault reads of experts that are not in RAM (on another MoE model it took llama.cpp from
+> ~7 tok/s to 0.8 tok/s). The table above uses llama.cpp natively instead, at its best.
 
 **Hardware matters a lot here.** In the disk path the expert math runs on the CPU (FreeToken's CPU
 executor, which used its AVX-512 path on this Zen 4 Ryzen 9 7900), and experts stream from disk through
@@ -92,7 +89,10 @@ the download and the one-time conversion.
 **You need:**
 - Linux or WSL2 with an NVIDIA GPU (12 GB VRAM tested) and a CUDA 13 toolkit with `nvcc` on `PATH`
   (FreeToken JIT-compiles its kernels; see [docs/install.md](docs/install.md)).
-- ~48 GB of RAM or more (the tested WSL2 cap), and ideally a CPU with AVX-512.
+- ~48 GB of RAM or more for WSL2, and ideally a CPU with AVX-512. **Give WSL2 as much RAM as Windows can spare**
+  (`memory=` in `%UserProfile%\\.wslconfig`): the page cache is Overspill's RAM tier, so every extra GB means fewer
+  expert reads from disk. Leave Windows ~10-12 GB: on a 64 GB machine 52 GB works, while 58 GB made Windows page
+  the VM itself out and decode collapsed.
 - **~170 GB of free disk:** the 85 GB download plus the 80 GB converted copy. You can delete the download
   after converting. Use a native Linux filesystem (in WSL2: your home directory, not `/mnt/c`).
 - [uv](https://docs.astral.sh/uv/).
@@ -142,7 +142,8 @@ get DeepSeek's reasoning mode.
 
 ## How each engine was run
 
-Same PC, same WSL2 VM (48 GB), same model files, page cache dropped before each run, greedy decoding. The
+Same PC and model files, greedy decoding. Overspill and Colibri ran in the same WSL2 VM (48 GB), page cache
+dropped before each run; llama.cpp ran natively on Windows (see the results note). The
 benchmark client is [`experiment/bench_openai.py`](experiment/bench_openai.py), and raw logs are in
 [`experiment/results/`](experiment/results/).
 
@@ -152,23 +153,26 @@ FT_FILE_BANKS=1 FT_EMBED_HOST=1 FT_HEAD_HOST=1 FT_SWA_RATIO=0.7 FT_CPU_PREFILL_M
 ft serve --model <dsv4-reap-ftw> --moe-strategy cpu --num-tokens 8192 --cuda-graph-max-bs 1 --max-running-requests 1
 ```
 
-**llama.cpp** (commit `81bc6b8`, CUDA build for sm_86), model
-`puwaer/DeepSeek-V4-Flash-0731-reap-150b-gguf` / `DeepSeek-V4-Flash-0731-reap-150b-MXFP4_MOE.gguf` (85.05 GB):
+**llama.cpp** (release b11205, native Windows CUDA build), model
+`puwaer/DeepSeek-V4-Flash-0731-reap-150b-gguf` / `DeepSeek-V4-Flash-0731-reap-150b-MXFP4_MOE.gguf` (85.05 GB),
+warm (after a warm-up run), all 64 GB of RAM:
 ```bash
 llama-server --model DeepSeek-V4-Flash-0731-reap-150b-MXFP4_MOE.gguf --ctx-size 8192 --parallel 1 \
-  --n-gpu-layers 99 --cpu-moe --flash-attn on --load-mode mmap --threads 11 --threads-batch 11 --jinja
+  --n-gpu-layers 99 --cpu-moe -ub 2048 --flash-attn on --load-mode mmap --threads 11 --threads-batch 11 \
+  --jinja --no-mmproj
 ```
 | flag | meaning |
 |---|---|
 | `--n-gpu-layers 99` | every layer on the GPU... |
 | `--cpu-moe` | ...except the expert weights, which stay in system memory and run on the CPU (= `--n-cpu-moe` for all layers) |
-| `--load-mode mmap` | memory-map the file: the only mode that works when the model is bigger than RAM, since experts page in from disk on demand (the default, set explicitly) |
+| `-ub 2048` | prompt micro-batch: 4x faster long-prompt processing than the default (1362 s -> 371 s to the first token); decode is unaffected |
+| `--load-mode mmap` | memory-map the file: the only mode that works when the model is bigger than RAM, since experts page in from disk on demand |
 | `--flash-attn on` | faster, memory-efficient attention |
 | `--ctx-size 8192`, `--parallel 1` | the same 8k context and single request as Overspill |
 | `--threads 11`, `--threads-batch 11` | the same 11 CPU threads as Overspill's CPU executor |
-| `--jinja` | the model's own chat template |
 
-The `--n-cpu-moe 42` variant replaces `--cpu-moe` with `--n-cpu-moe 42`.
+Sweep: `--cpu-moe` at `-ub 512` decodes the same (prompt processing is 4x slower); `--n-cpu-moe 42` (one layer's
+experts on the GPU) is slower on this 12 GB card.
 
 **Colibri** (commit `ce370e8`, DeepSeek-V4 engine, built with `CUDA=1 CUDA_ARCH=sm_86`), reading the original
 HF checkpoint:
@@ -182,7 +186,9 @@ These follow Colibri's documented 10-12 GB VRAM configuration. The 6.4k prompt n
 
 ## Limitations
 
-- Measured on one machine and one model; Linux/WSL2 only (it relies on `mmap`/`madvise`).
+- Measured on one machine and one model. **Linux or WSL2 is the supported path.** A native Windows port exists
+  ([`experiment/win/`](experiment/win/), see DESIGN_NOTES Validation 8) but is experimental: it decodes ~12% slower
+  than WSL on DeepSeek-V4 today.
 - Decode is bounded by expert misses from disk: faster NVMe (or native Linux instead of WSL2's
   virtual disk) and more RAM help directly.
 - The first request after a cold start is slow (~40 s) while the page cache fills.
