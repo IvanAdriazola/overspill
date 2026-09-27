@@ -8,7 +8,7 @@ BENCH=$(cygpath -m "$HERE/bench_openai.py")
 LABEL=$1; shift
 LOG="$HERE/flashnext_win_$LABEL.log"
 echo "=== Overspill (native Windows) $LABEL $(date +%H:%M:%S) args: $*" | tee "$LOG"
-cmd //c "$(cygpath -w "$HERE/win/serve_flashnext_win.bat")" "$@" > "$HERE/serve_flashnext_win_$LABEL.log" 2>&1 &
+MSYS_NO_PATHCONV=1 cmd.exe /c "$(cygpath -w "$HERE/win/serve_flashnext_win.bat")" "$@" > "$HERE/serve_flashnext_win_$LABEL.log" 2>&1 &
 SRV=$!
 typeperf "\PhysicalDisk(_Total)\Disk Read Bytes/sec" -si 5 > "$HERE/monitor_flashnext_win_$LABEL.csv" 2>&1 &
 MON=$!

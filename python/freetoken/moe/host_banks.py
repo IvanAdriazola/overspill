@@ -83,7 +83,7 @@ class HostBank:
 
     The buffer is rounded up to the O_DIRECT block; ``tensor`` views exactly ``nbytes``. ``backing=None`` follows ``FREETOKEN_BANK_CUDA_ALLOC``."""
 
-    __slots__ = ("tensor", "addr", "nbytes", "_buf", "_pinned", "_locked", "_file")
+    __slots__ = ("tensor", "addr", "nbytes", "_buf", "_pinned", "_locked", "_file", "_head")
 
     def __init__(self, shape: tuple[int, ...], dtype: torch.dtype,
                  *, backing: str | None = None):
@@ -160,7 +160,7 @@ class HostBank:
         return HostResidency.PAGEABLE
 
     def memoryview(self) -> memoryview:
-        head = getattr(self, "_head", 0)  # file banks map from the allocation granule below
+        head = getattr(self, "_head", 0) or 0  # file banks map from the allocation granule below
         mv = memoryview(self._buf)
         return mv[head : head + self.nbytes] if head else mv
 

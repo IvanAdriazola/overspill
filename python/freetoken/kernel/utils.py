@@ -17,9 +17,27 @@ DISABLE_KERNEL_CACHE_VERSION_CHECK_ENV = "FREETOKEN_DISABLE_KERNEL_CACHE_VERSION
 DISABLE_JIT_ENV = "FREETOKEN_DISABLE_JIT"
 _TRUE_VALUES = {"1", "true", "yes", "on"}
 DEFAULT_INCLUDE = [str(KERNEL_PATH / "include")]
-DEFAULT_CFLAGS = ["-std=c++20", "-O3"]
+# MSVC (Windows host compiler for .cpp JIT sources) ignores GCC-style flags: -std=c++20 would silently leave it on
+# tvm-ffi's /std:c++17 (no std::source_location) and -O3 would mean no optimization.
+DEFAULT_CFLAGS = ["/std:c++20", "/O2", "/Zc:__cplusplus"] if os.name == "nt" else ["-std=c++20", "-O3"]
 DEFAULT_CUDA_CFLAGS = ["-std=c++20", "-O3", "--expt-relaxed-constexpr"]
 DEFAULT_LDFLAGS = []
+
+
+def _windows_cuda_ldflags() -> List[str]:
+    """tvm-ffi links cudart only on Linux (-L<cuda>/lib64 -lcudart); on Windows its link line has no CUDA
+    runtime, so kernels that call cudaLaunchKernelExC/cudaGetErrorString fail with LNK2019. Add it here."""
+    import os
+
+    if os.name != "nt":
+        return []
+    home = os.environ.get("CUDA_HOME") or os.environ.get("CUDA_PATH")
+    if not home:
+        return []
+    return [f"/LIBPATH:{os.path.join(home, 'lib', 'x64')}", "cudart.lib"]
+
+
+DEFAULT_LDFLAGS += _windows_cuda_ldflags()
 
 
 def _cuda_cflags(extra: List[str]) -> List[str]:

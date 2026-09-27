@@ -10,6 +10,7 @@ import torch
 from freetoken.mm.config import ENCODER_KINDS, MultimodalConfig
 from freetoken.distributed import DistributedInfo
 from freetoken.scheduler import SchedulerConfig
+from freetoken.scheduler.config import zmq_local_addr
 from freetoken.utils import init_logger
 
 logger = init_logger(__name__)
@@ -77,13 +78,13 @@ class ServerArgs(SchedulerConfig):
 
     @property
     def zmq_frontend_addr(self) -> str:
-        return "ipc:///tmp/freetoken_3" + self._unique_suffix
+        return zmq_local_addr(3, self._unique_suffix)
 
     @property
     def zmq_tokenizer_addr(self) -> str:
         if self.share_tokenizer:
             return self.zmq_detokenizer_addr
-        result = "ipc:///tmp/freetoken_4" + self._unique_suffix
+        result = zmq_local_addr(4, self._unique_suffix)
         assert result != self.zmq_detokenizer_addr
         return result
 
