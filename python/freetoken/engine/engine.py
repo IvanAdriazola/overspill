@@ -393,7 +393,14 @@ class Engine:
         # The engine measures the budget and settles the sibling GDN state pool's bytes
         # off it; the KV pool family owns every geometry-specific formula behind the rest.
         available_memory = _startup_kv_budget(config.memory_ratio, init_free_memory, new_free)
-        available_memory -= state_pool_bytes(config)
+        _state_bytes = state_pool_bytes(config)
+        available_memory -= _state_bytes
+        _cpp, _fixed, _, _ = self._pool_cls.kv_cost(config)
+        logger.info_rank0(
+            f"KV budget: {mem_GB(available_memory + _state_bytes)} (ratio {config.memory_ratio} x init free "
+            f"{mem_GB(init_free_memory)} - used {mem_GB(init_free_memory - new_free)}), linear-state pool "
+            f"{mem_GB(_state_bytes)}, KV fixed {mem_GB(_fixed)}, per page {mem_GB(_cpp)}"
+        )
         self.num_pages = self._pool_cls.solve_num_pages(config, available_memory)
         num_tokens = self.num_pages * config.page_size
         self.ctx.kv_cache = self.kv_cache = create_kv_pool(

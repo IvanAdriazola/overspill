@@ -10,7 +10,7 @@ LOG="$HERE/flashnext_win_$LABEL.log"
 echo "=== Overspill (native Windows) $LABEL $(date +%H:%M:%S) args: $*" | tee "$LOG"
 MSYS_NO_PATHCONV=1 cmd.exe /c "$(cygpath -w "$HERE/win/serve_flashnext_win.bat")" "$@" > "$HERE/serve_flashnext_win_$LABEL.log" 2>&1 &
 SRV=$!
-typeperf "\PhysicalDisk(_Total)\Disk Read Bytes/sec" -si 5 > "$HERE/monitor_flashnext_win_$LABEL.csv" 2>&1 &
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$HERE/win/monitor_disk_win.ps1")" > "$HERE/monitor_flashnext_win_$LABEL.csv" 2>&1 &
 MON=$!
 t0=$(date +%s)
 until [ "$(curl -s -m 1200 -o /dev/null -w '%{http_code}' http://127.0.0.1:1919/v1/chat/completions -H 'Content-Type: application/json' \
@@ -30,4 +30,5 @@ fi
 # so only a tree kill catches them; killing the parent alone orphans them)
 for pid in $(MSYS_NO_PATHCONV=1 tasklist.exe /FI "IMAGENAME eq ft.exe" /FO CSV /NH | grep -i ft.exe | cut -d, -f2 | tr -d '"'); do MSYS_NO_PATHCONV=1 taskkill.exe /F /T /PID "$pid" >/dev/null 2>&1; done
 kill $SRV $MON 2>/dev/null
+powershell.exe -NoProfile -Command 'Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match "monitor_disk_win" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }' 2>/dev/null
 grep -E '^\{' "$LOG" | sed -E 's/.*"prompt_tokens": ([0-9]+).*"ttft_s": ([0-9.]+).*"decode_tok_s": ([0-9.]+).*/prompt=\1 ttft=\2 dec=\3/'
