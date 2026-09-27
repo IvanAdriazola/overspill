@@ -1,0 +1,12 @@
+=== native matrix 2026-09-27 13:32 caps: 32 16 48 | llama.cpp --n-cpu-moe 48 -ub 2048 | overspill cpu --cache-type naive --memory-ratio 0.97 (head in VRAM) and mixed (pin budget 40% of cap)
+cap=32GB: hog LOCKED 32.00 GiB, available now 23,9 GB
+cap=32GB overspill all-CPU, head in VRAM (flashnext_win_N32_os_cpu.log)
+ready after 59s
+  prompt=89 ttft=25.95 dec=3.48
+  prompt=97 ttft=39.98 dec=2.94
+  prompt=5749 ttft=210.66 dec=2.94
+cap=32GB overspill mixed (pin 12.8 GB) (flashnext_win_N32_os_mixed.log)
+ready after 79s
+  prompt=89 ttft=52.46 dec=2.65
+  prompt=97 ttft=45.79 dec=2.29
+  prompt=5749 ttft=166.09 dec=2.37
