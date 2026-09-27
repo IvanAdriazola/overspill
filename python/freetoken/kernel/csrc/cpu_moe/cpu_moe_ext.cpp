@@ -2023,8 +2023,7 @@ struct CpuMoeExecutor {
       pr_sync += ns_since(pr_t0);
       pr_tprev = std::chrono::steady_clock::now(); pr_have_prev = true;
       if (++pr_n == 480) {
-        fprintf(stderr, "[cpu_moe prof] per task us: prefetch %.1f wake %.1f compute %.1f submit->sync_return %.1f | gap_between_tasks %.1f (threads %d)
-",
+        fprintf(stderr, "[cpu_moe prof] per task us: prefetch %.1f wake %.1f compute %.1f submit->sync_return %.1f | gap_between_tasks %.1f (threads %d)\n",
                 pr_pf / 480e3, pr_wake / 480e3, pr_body / 480e3, pr_sync / 480e3, pr_gap / 480e3, (int)num_threads);
         pr_pf = pr_wake = pr_body = pr_sync = pr_gap = 0; pr_n = 0;
       }
