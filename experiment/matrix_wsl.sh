@@ -15,6 +15,11 @@ export FT_MODEL_DIR=/mnt/wsl/gmodels/flashnext_ftw
 export LLAMA_GGUF=/mnt/wsl/gmodels/gguf/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf
 export WSLENV=FT_MODEL_DIR:LLAMA_GGUF
 export GPU_LOCK_MAX_MINUTES=150
+# Block-device read-ahead (KB) of the G: model disk, per engine. WSL resets it to 8192 on every restart, which
+# cripples llama.cpp's page-fault reads (0.8 tok/s at 52 GB); its sweep 32-8192 KB picked 128 (results/readahead_sweep).
+LLAMA_RA=${LLAMA_RA:-128}
+OS_RA=${OS_RA:-128}
+setra() { MSYS_NO_PATHCONV=1 wsl.exe -d Ubuntu-24.04 -u root -- bash /mnt/c/GIT/Freetoken-colibri-experiment/experiment/gmodels/set_readahead.sh "$1" | tee -a "$SUMMARY"; }
 LLAMA_ARGS=(--n-cpu-moe 48 -ub 2048)   # best native-Windows config (sweep: n-cpu-moe 40-48, ub 512/2048, threads 8-12)
 
 run() {  # run <label> <script> [args] -- under the GPU lock, then append its numbers to the summary
@@ -26,7 +31,7 @@ summ() {  # summ <cap> <engine/mode> <log>
     grep -E '^\{' "$3" | sed -E 's/.*"prompt_tokens": ([0-9]+).*"ttft_s": ([0-9.]+).*"decode_tok_s": ([0-9.]+).*/  prompt=\1 ttft=\2 dec=\3/'; } | tee -a "$SUMMARY"
 }
 
-echo "=== matrix $(date '+%F %H:%M') caps: ${CAPS[*]} llama: ${LLAMA_ARGS[*]}" | tee -a "$SUMMARY"
+echo "=== matrix $(date '+%F %H:%M') caps: ${CAPS[*]} llama: ${LLAMA_ARGS[*]} read-ahead KB: overspill $OS_RA, llama.cpp $LLAMA_RA" | tee -a "$SUMMARY"
 for cap in "${CAPS[@]}"; do
   sed -i "s/^memory=.*/memory=${cap}GB/" "$CFG"
   wsl.exe --shutdown; sleep 8
@@ -34,10 +39,12 @@ for cap in "${CAPS[@]}"; do
   MSYS_NO_PATHCONV=1 wsl.exe -d Ubuntu-24.04 -u root -- bash -c 'free -g | sed -n 2p' | tee -a "$SUMMARY"
   cd "$HERE"
   # Overspill: warm-up (mixed), then mixed and cpu measured
+  setra "$OS_RA"
   run "os-warm-$cap"  bench_flashnext.sh "M${cap}_os_warmup" mixed
   run "os-mixed-$cap" bench_flashnext.sh "M${cap}_os_mixed" mixed;  summ "$cap" "overspill mixed" "flashnext_M${cap}_os_mixed.log"
   run "os-cpu-$cap"   bench_flashnext.sh "M${cap}_os_cpu" cpu;      summ "$cap" "overspill cpu"   "flashnext_M${cap}_os_cpu.log"
   # llama.cpp: warm-up, then measured
+  setra "$LLAMA_RA"
   run "ll-warm-$cap"  bench_llamacpp_wsl.sh "M${cap}_warmup" "${LLAMA_ARGS[@]}"
   run "ll-$cap"       bench_llamacpp_wsl.sh "M${cap}" "${LLAMA_ARGS[@]}"; summ "$cap" "llama.cpp ${LLAMA_ARGS[*]}" "llamacpp_wsl_M${cap}.log"
 done

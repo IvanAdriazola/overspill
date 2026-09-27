@@ -1,0 +1,43 @@
+# llama.cpp b11205 inside WSL (52 GB cap), Qwen3.8-Flash-Next UD-IQ4_XS on the G: ext4 disk, --n-cpu-moe 48 -ub 2048.
+# read_ahead_kb of the model disk vs decode tok/s and TTFT (short/short/5.7k). Passes run in this order; the page cache kept warming across passes.
+== ra2048
+  prompt=89 ttft=22.37 dec=3.84
+  prompt=97 ttft=9.39 dec=3.15
+  prompt=5715 ttft=76.58 dec=3.84
+== ra1024
+  prompt=89 ttft=24.92 dec=6.35
+  prompt=97 ttft=17.45 dec=4.53
+  prompt=5715 ttft=75.88 dec=3.64
+== ra256
+  prompt=89 ttft=34.85 dec=5.75
+  prompt=97 ttft=12.6 dec=5.43
+  prompt=5715 ttft=92.37 dec=5.15
+== ra1024b
+  prompt=89 ttft=28.38 dec=6.55
+  prompt=97 ttft=20.89 dec=4.14
+  prompt=5715 ttft=89.1 dec=4.65
+== ra512b
+  prompt=89 ttft=32.27 dec=4.39
+  prompt=97 ttft=29.36 dec=4.86
+  prompt=5715 ttft=87.81 dec=4.34
+== ra256b
+  prompt=89 ttft=18.99 dec=4.92
+  prompt=97 ttft=10.02 dec=5.02
+  prompt=5715 ttft=95.44 dec=4.52
+== ra128b
+  prompt=89 ttft=17.73 dec=8.16
+  prompt=97 ttft=13.55 dec=7.4
+  prompt=5715 ttft=101.36 dec=4.25
+== ra64c
+  prompt=89 ttft=16.18 dec=7.31
+  prompt=97 ttft=12.48 dec=7.35
+  prompt=5715 ttft=147.42 dec=4.65
+== ra128c
+  prompt=89 ttft=18.82 dec=7.35
+  prompt=97 ttft=23.04 dec=7.03
+  prompt=5715 ttft=117.98 dec=4.08
+== ra32c
+  prompt=89 ttft=15.23 dec=7.83
+  prompt=97 ttft=23.86 dec=7.04
+  prompt=5715 ttft=216.78 dec=4.06
+== ra8192 (WSL default, matrix M52 warm-up): ~0.8 tok/s decode, disk ~400 MB/s

@@ -10,6 +10,9 @@ GGUF=${LLAMA_GGUF:-/mnt/wsl/gmodels/gguf/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-
 LABEL=$1; shift
 LOG="$HERE/llamacpp_wsl_$LABEL.log"
 echo "=== llama.cpp (WSL) $LABEL $(date +%H:%M:%S) gguf: $GGUF args: $*" | tee "$LOG"
+# the previous server can hold port 1920 for a few seconds after it exits
+for i in $(seq 1 30); do curl -s -m 2 -o /dev/null http://127.0.0.1:1920/health || break; sleep 2; done
+MSYS_NO_PATHCONV=1 wsl.exe -d Ubuntu-24.04 -u root -- bash -c 'for i in $(seq 1 30); do pgrep -x llama-server >/dev/null || break; sleep 1; done'
 MSYS_NO_PATHCONV=1 wsl.exe -d Ubuntu-24.04 -u ivan -- env ALIAS=flashnext PORT=1920 \
   bash /mnt/c/GIT/Freetoken-colibri-experiment/experiment/llamacpp/serve_llamacpp.sh "$GGUF" --no-mmproj "$@" \
   > "$HERE/serve_llamacpp_wsl_$LABEL.log" 2>&1 &
