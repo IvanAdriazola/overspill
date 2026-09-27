@@ -1,0 +1,13 @@
+# Native-Windows extras for .venv-win (on top of `uv pip install --no-sources -e .`).
+# torch/torchvision from https://download.pytorch.org/whl/cu130 (torch==2.11.*, torchvision==0.26.*).
+triton-windows==3.6.0.post26
+setuptools
+wheel
+ninja
+# CUDA 13.0 toolchain from NVIDIA's wheels (no system install). Pin EVERY piece: unpinned, nvidia-nvvm and
+# nvidia-cuda-crt resolve to 13.4, whose cicc emits PTX 9.4 that ptxas 13.0 and the r591 driver (CUDA 13.1) reject.
+nvidia-cuda-nvcc==13.0.*
+nvidia-cuda-runtime==13.0.*
+nvidia-cuda-cccl==13.0.*
+nvidia-nvvm==13.0.*
+nvidia-cuda-crt==13.0.*

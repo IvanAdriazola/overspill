@@ -50,6 +50,18 @@ def _cuda_cflags(extra: List[str]) -> List[str]:
     no-op and tvm-ffi targets only the local GPU."""
     flags = DEFAULT_CUDA_CFLAGS + extra
     arch_list = os.getenv("TVM_FFI_CUDA_ARCH_LIST", "").split()
+    if os.name == "nt":
+        # tvm-ffi's Windows branch emits no -gencode target at all (Linux adds one per arch), which left
+        # only the PTX below and made every kernel depend on the driver's PTX JIT ("provided PTX was
+        # compiled with an unsupported toolchain"). Emit SASS per arch, or for the local GPU.
+        if not arch_list:
+            import torch
+
+            major, minor = torch.cuda.get_device_capability()
+            arch_list = [f"{major}.{minor}"]
+        for a in arch_list:
+            sm = a.rstrip("a").replace(".", "") + ("a" if a.endswith("a") else "")
+            flags = flags + [f"-gencode=arch=compute_{sm},code=sm_{sm}"]
     if arch_list:
         def _rank(a: str) -> int:
             major, minor = a.rstrip("a").split(".")
