@@ -30,10 +30,16 @@ def _cuda_runtime_paths() -> tuple[list[str], list[str]]:
     library_dirs = [str(cuda_home / "lib64")]
     if (cuda_home / "lib").exists():
         library_dirs.append(str(cuda_home / "lib"))
+    if (cuda_home / "lib" / "x64").exists():  # Windows toolkit (and the nvidia-cuda-* cu13 wheels)
+        library_dirs.append(str(cuda_home / "lib" / "x64"))
     return [str(cuda_home / "include")], library_dirs
 
 
 cuda_include_dirs, cuda_library_dirs = _cuda_runtime_paths()
+# MSVC ignores (and warns on) GCC-style flags: -O3 would silently mean an unoptimized build.
+_WIN = sys.platform == "win32"
+_CXX_FLAGS = ["/O2", "/std:c++17", "/EHsc", "/DNOMINMAX"] if _WIN else ["-O3", "-std=c++17"]
+_PTHREAD = [] if _WIN else ["-pthread"]
 _check_toolchain()
 
 
@@ -47,7 +53,7 @@ setup(
             include_dirs=cuda_include_dirs,
             library_dirs=cuda_library_dirs,
             libraries=["cudart"],
-            extra_compile_args=["-O3", "-std=c++17"],
+            extra_compile_args=_CXX_FLAGS,
         ),
         # CPU-compute MoE executor for --moe-backend cpu. Links cudart for the
         # cudaLaunchHostFunc submit/sync graph nodes; the bf16 GEMV microkernels
@@ -62,7 +68,7 @@ setup(
             include_dirs=cuda_include_dirs,
             library_dirs=cuda_library_dirs,
             libraries=["cudart"],
-            extra_compile_args=["-O3", "-std=c++17", "-pthread"],
+            extra_compile_args=_CXX_FLAGS + _PTHREAD,
         ),
         # --ple-backend disk row store; Linux-only until the TableFile/BatchReader seams grow Windows bodies
         *([

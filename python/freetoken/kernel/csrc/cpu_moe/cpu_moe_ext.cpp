@@ -41,11 +41,41 @@
 #define CPU_MOE_HAS_AFFINITY 0
 #endif
 
-#if defined(__x86_64__) || defined(__i386__)
+#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64)
 #include <immintrin.h>
 #define CPU_MOE_X86 1
 #else
 #define CPU_MOE_X86 0
+#endif
+
+// MSVC (not clang-cl): no per-function target attributes -- and none needed, MSVC emits any
+// intrinsic regardless of /arch -- and no __builtin_cpu_supports: detect features with CPUID.
+// Without _M_X64 above, MSVC builds used to drop every SIMD tier and run scalar.
+#if defined(_MSC_VER) && !defined(__clang__)
+#include <intrin.h>
+#define __attribute__(x)
+#define CPU_MOE_MSVC 1
+static bool msvc_cpu_supports(const char* f) {
+  int r1[4], r7[4], r7s1[4];
+  __cpuidex(r1, 1, 0);
+  __cpuidex(r7, 7, 0);
+  __cpuidex(r7s1, 7, 1);
+  // AVX state must be enabled by the OS (XGETBV), and ZMM/opmask state for AVX-512.
+  const bool osxsave = (r1[2] >> 27) & 1;
+  const unsigned long long xcr0 = osxsave ? _xgetbv(0) : 0;
+  const bool ymm = (xcr0 & 0x6) == 0x6, zmm = ymm && (xcr0 & 0xe0) == 0xe0;
+  const std::string s(f);
+  if (s == "avx2") return ymm && ((r7[1] >> 5) & 1);
+  if (s == "fma") return ymm && ((r1[2] >> 12) & 1);
+  if (s == "avx512f") return zmm && ((r7[1] >> 16) & 1);
+  if (s == "avx512vnni") return zmm && ((r7[2] >> 11) & 1);
+  if (s == "avx512bf16") return zmm && ((r7s1[0] >> 5) & 1);
+  if (s == "avxvnni") return ymm && ((r7s1[0] >> 4) & 1);
+  return false;
+}
+#define __builtin_cpu_supports(f) msvc_cpu_supports(f)
+#else
+#define CPU_MOE_MSVC 0
 #endif
 
 namespace {
@@ -140,7 +170,7 @@ float dot_avx512f(const bf16_t* w, const bf16_t* x, int n) {
   return s;
 }
 
-#if (defined(__GNUC__) && __GNUC__ >= 10) || defined(__clang__)
+#if (defined(__GNUC__) && __GNUC__ >= 10) || defined(__clang__) || CPU_MOE_MSVC
 #define CPU_MOE_HAS_AVX512BF16 1
 __attribute__((target("avx512bf16,avx512f")))
 static inline __m512bh load_bh(const bf16_t* p) {
@@ -451,7 +481,7 @@ float dot_nvfp4_i8_vnni(const uint8_t* packed, const uint8_t* scale, float globa
   return s * (0.5f * global);
 }
 
-#if (defined(__GNUC__) && __GNUC__ >= 10) || defined(__clang__)
+#if (defined(__GNUC__) && __GNUC__ >= 10) || defined(__clang__) || CPU_MOE_MSVC
 #define CPU_MOE_HAS_AVX512VNNI 1
 
 // Software-prefetch distance for the W4A8 weight stream, in 16-K blocks (8 packed
@@ -1249,14 +1279,20 @@ struct CpuMoeExecutor {
     }
   }
   void prefetch_one(const MoeTask* t, int64_t idx) const {
-#if defined(__linux__)
+#if defined(__linux__) || defined(_WIN32)
     const size_t nb = pf_tbls.size();
     const int32_t e = t->ids[idx / nb];
     if (e < 0 || e >= num_experts) return;
     const size_t b = idx % nb;
     const uintptr_t a = pf_tbls[b][t->layer_id] + static_cast<uintptr_t>(e) * pf_rows[b];
     const uintptr_t s = a & ~static_cast<uintptr_t>(4095);
+#if defined(__linux__)
     madvise(reinterpret_cast<void*>(s), pf_rows[b] + (a - s), MADV_WILLNEED);
+#else
+    // Windows' WILLNEED: queues async reads for the non-resident pages of a file mapping.
+    WIN32_MEMORY_RANGE_ENTRY r{reinterpret_cast<void*>(s), pf_rows[b] + (a - s)};
+    PrefetchVirtualMemory(GetCurrentProcess(), 1, &r, 0);
+#endif
 #else
     (void)t; (void)idx;
 #endif
