@@ -12,6 +12,9 @@ from freetoken.layers import BaseOP, LinearColParallelMerged, LinearRowParallel,
 
 from .args import DeepseekV4Args
 
+# layer_id -> Gate, for the CPU-decode router lookahead (moe/cpu_executor.CPU_LOOKAHEAD)
+_GATES: dict[int, "Gate"] = {}
+
 
 class Gate(BaseOP):
     """MoE router: sqrtsoftplus scoring + hash routing (first ``n_hash_layers``)."""
@@ -127,7 +130,9 @@ class MoE(BaseOP):
 
     def __init__(self, layer_id: int, args: DeepseekV4Args, *, strategy: str = "offload", decode_target: str = "gpu", quant_config=None, prefix: str = ""):
         self.dim = args.dim
+        self.layer_id = layer_id
         self.gate = Gate(layer_id, args)
+        _GATES[layer_id] = self.gate
         self.shared_experts = Expert(args.dim, args.moe_inter_dim, args.swiglu_limit, quant_config=quant_config, prefix=f"{prefix}.shared_experts")
         self.experts = DSV4OffloadMoELayer(layer_id, args, strategy=strategy, decode_target=decode_target, quant_config=quant_config, prefix=f"{prefix}.experts")
 
@@ -139,6 +144,13 @@ class MoE(BaseOP):
         # CPU pool inside routed_forward, so this GEMM must already be on the stream
         # to overlap the CPU overflow compute.
         shared = self.shared_experts.forward(x)
+        from freetoken.moe import cpu_executor as _cx
+
+        if _cx.CPU_LOOKAHEAD:
+            nxt = _GATES.get(self.layer_id + 1)
+            # the next layer's router on THIS layer's MoE input: exact for hash-routed layers, a good
+            # guess for score-routed ones (the residual stream changes little across one layer)
+            _cx.stash_lookahead(nxt.forward(x, input_ids.flatten())[1] if nxt is not None else None)
         # routed_forward may mutate the ids in place (offload decode slot remap);
         # indices.to(int32) always copies (int64 source), so no clone needed here.
         routed = self.experts.routed_forward(

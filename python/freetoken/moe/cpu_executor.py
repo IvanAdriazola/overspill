@@ -49,6 +49,18 @@ logger = init_logger(__name__)
 # Caveat: the coordinator busy-polls one core while decode traffic flows (idle backoff
 # otherwise); FREETOKEN_CPU_MOE_FLAG_SYNC=0 opts out entirely.
 _FLAG_SYNC = os.getenv("FREETOKEN_CPU_MOE_FLAG_SYNC", "1") != "0"
+# Router lookahead for CPU-served decode (FT_CPU_LOOKAHEAD=1): a model stashes layer L+1's predicted expert ids
+# right before layer L's routed decode; decode_submit ships them with L's routing and the C++ executor prefetches
+# those experts from disk while L computes, overlapping the next layer's page-ins with this layer's work.
+CPU_LOOKAHEAD = os.getenv("FT_CPU_LOOKAHEAD", "0").strip().lower() not in {"0", "false", "no", "off", ""}
+_lookahead_next: list = [None]
+
+
+def stash_lookahead(next_ids: torch.Tensor | None) -> None:
+    """Predicted expert ids ([bs, k], any int dtype, on the GPU) of the NEXT MoE layer, consumed by the next
+    decode_submit. No-op unless FT_CPU_LOOKAHEAD is on."""
+    if CPU_LOOKAHEAD:
+        _lookahead_next[0] = next_ids
 # Flag slots per MoE layer: covers this many distinct decode batch sizes (captured graph
 # sizes plus any eager padded sizes); more than that is unheard of, and the overflow
 # just keeps the host-func path for the extra combos.
@@ -292,6 +304,7 @@ class CpuMoeExecutor:
         # lifetime (flag_sync itself was decided above, before thread sizing).
         self._ready = self._done = self._err = None
         self._flag_slots: dict[tuple[int, int], int] = {}  # (layer_id, bs) -> slot
+        self._lookahead_tasks: set[tuple[int, int]] = set()
         self._flag_capacity = self.num_layers * _FLAG_SLOTS_PER_LAYER
         if self._flag_sync:
             self._ready = alloc_pinned_tensor(self._flag_capacity, dtype=torch.int64)
@@ -592,6 +605,18 @@ class CpuMoeExecutor:
         io["w"].copy_(topk_weights.to(torch.float32), non_blocking=True)
 
         task = self._task_for(layer_id, bs)
+        nxt = _lookahead_next[0]
+        _lookahead_next[0] = None
+        if nxt is not None and hasattr(self._ext, "set_task_lookahead"):
+            k = int(nxt.shape[-1])
+            key = ("next", bs, k)
+            buf = self._io[bs].get(key)
+            if buf is None:
+                buf = self._io[bs][key] = alloc_pinned_tensor(bs, k, dtype=torch.int32)
+            buf.copy_(nxt.to(torch.int32), non_blocking=True)
+            if (layer_id, bs) not in self._lookahead_tasks:
+                self._ext.set_task_lookahead(task, buf.data_ptr(), k)
+                self._lookahead_tasks.add((layer_id, bs))
         out = torch.empty_like(hidden_states)
         slot = self._flag_slots.get((layer_id, bs)) if self._flag_sync else None
         if slot is not None:

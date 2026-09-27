@@ -1115,6 +1115,10 @@ struct MoeTask {
   const int32_t* ids;  // [num_tokens, top_k]  (raw expert ids; <0 = skip)
   const float* w;      // [num_tokens, top_k]
   bf16_t* y;           // [num_tokens, H]
+  // Router lookahead (FT_CPU_LOOKAHEAD): predicted expert ids of layer_id + 1 ([num_tokens, next_k],
+  // <0 = skip), prefetched from disk while this layer computes. nullptr / 0 = off.
+  const int32_t* next_ids = nullptr;
+  int next_k = 0;
 };
 
 // Output-row tiling. Small enough to give every worker independent work even at
@@ -1281,10 +1285,20 @@ struct CpuMoeExecutor {
   void prefetch_one(const MoeTask* t, int64_t idx) const {
 #if defined(__linux__) || defined(_WIN32)
     const size_t nb = pf_tbls.size();
-    const int32_t e = t->ids[idx / nb];
+    const int64_t own = static_cast<int64_t>(t->num_tokens) * top_k * static_cast<int64_t>(nb);
+    int layer = t->layer_id;
+    int32_t e;
+    if (idx < own) {
+      e = t->ids[idx / nb];
+    } else {  // lookahead units: the next layer's predicted experts
+      idx -= own;
+      layer = t->layer_id + 1;
+      if (layer >= num_layers) return;
+      e = t->next_ids[idx / nb];
+    }
     if (e < 0 || e >= num_experts) return;
     const size_t b = idx % nb;
-    const uintptr_t a = pf_tbls[b][t->layer_id] + static_cast<uintptr_t>(e) * pf_rows[b];
+    const uintptr_t a = pf_tbls[b][layer] + static_cast<uintptr_t>(e) * pf_rows[b];
     const uintptr_t s = a & ~static_cast<uintptr_t>(4095);
 #if defined(__linux__)
     madvise(reinterpret_cast<void*>(s), pf_rows[b] + (a - s), MADV_WILLNEED);
@@ -1298,7 +1312,11 @@ struct CpuMoeExecutor {
 #endif
   }
   int64_t prefetch_units(const MoeTask* t) const {
-    return static_cast<int64_t>(t->num_tokens) * top_k * static_cast<int64_t>(pf_tbls.size());
+    const int64_t per = static_cast<int64_t>(pf_tbls.size());
+    int64_t n = static_cast<int64_t>(t->num_tokens) * top_k * per;
+    if (t->next_ids != nullptr && t->next_k > 0 && t->layer_id + 1 < num_layers)
+      n += static_cast<int64_t>(t->num_tokens) * t->next_k * per;
+    return n;
   }
   // Serial prefetch on the submitting thread (FT_PF_SERIAL=1). By default the madvise
   // calls are instead spread over the worker pool at the start of run_task_body: with
@@ -1656,6 +1674,13 @@ struct CpuMoeExecutor {
                              reinterpret_cast<bf16_t*>(y_ptr)};
     owned_tasks.push_back(t);
     return reinterpret_cast<uintptr_t>(t);
+  }
+
+  // Router lookahead: attach a pinned [num_tokens, k] buffer of predicted next-layer expert ids to a task.
+  void set_task_lookahead(uintptr_t task, uintptr_t next_ids_ptr, int k) {
+    MoeTask* t = reinterpret_cast<MoeTask*>(task);
+    t->next_ids = reinterpret_cast<const int32_t*>(next_ids_ptr);
+    t->next_k = k;
   }
 
   const char* isa_name() const { return isa; }
@@ -2266,6 +2291,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
       .def("sync_with_cuda_stream", &CpuMoeExecutor::sync_with_cuda_stream,
            py::arg("stream"), py::arg("task"), py::call_guard<py::gil_scoped_release>())
       .def("set_prefetch", &CpuMoeExecutor::set_prefetch, py::arg("tables"), py::arg("row_bytes"))
+      .def("set_task_lookahead", &CpuMoeExecutor::set_task_lookahead, py::arg("task"), py::arg("next_ids_ptr"),
+           py::arg("k"))
       .def("run_task", &CpuMoeExecutor::run_task, py::arg("task"),
            py::call_guard<py::gil_scoped_release>())
       .def("register_flag_task", &CpuMoeExecutor::register_flag_task,
