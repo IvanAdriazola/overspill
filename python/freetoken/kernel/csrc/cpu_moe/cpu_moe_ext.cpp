@@ -607,7 +607,25 @@ float dot_nvfp4_i8_avx512vnni(const uint8_t* packed, const uint8_t* scale, float
 // probed functionally at startup (memops_probe); anything unsupported (Windows WDDM,
 // vGPU, old drivers) falls back to the cudaLaunchHostFunc path.
 #if defined(_WIN32)
-#include <windows.h>
+// The handful of Win32 calls this file needs, declared directly: <windows.h> (winnt.h's InterlockedAnd/Or
+// inline wrappers) makes the MSVC STL's <atomic> ambiguous under clang-cl.
+typedef void* HMODULE;
+typedef void* HANDLE;
+typedef unsigned __int64 DWORD_PTR;
+typedef unsigned __int64 ULONG_PTR;
+struct WIN32_MEMORY_RANGE_ENTRY {
+  void* VirtualAddress;
+  size_t NumberOfBytes;
+};
+extern "C" {
+__declspec(dllimport) HMODULE __stdcall LoadLibraryA(const char* name);
+__declspec(dllimport) void* __stdcall GetProcAddress(HMODULE module, const char* name);
+__declspec(dllimport) HANDLE __stdcall GetCurrentProcess(void);
+__declspec(dllimport) HANDLE __stdcall GetCurrentThread(void);
+__declspec(dllimport) DWORD_PTR __stdcall SetThreadAffinityMask(HANDLE thread, DWORD_PTR mask);
+__declspec(dllimport) int __stdcall PrefetchVirtualMemory(HANDLE process, ULONG_PTR count,
+                                                          WIN32_MEMORY_RANGE_ENTRY* entries, unsigned long flags);
+}
 static void* cumemop_dlopen() { return (void*)::LoadLibraryA("nvcuda.dll"); }
 static void* cumemop_dlsym(void* h, const char* n) {
   return (void*)::GetProcAddress((HMODULE)h, n);
