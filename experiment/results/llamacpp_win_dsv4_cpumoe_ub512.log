@@ -1,0 +1,244 @@
+=== llama.cpp (native Windows b11205) dsv4_cpumoe_ub512 18:31:19 args: --cpu-moe -ub 512
+ready after 68s
+{"mode": "short", "prompt_tokens": 38, "completion_tokens": 128, "chunks": 128, "ttft_s": 31.14, "prefill_tok_s": 1.2, "total_s": 83.53, "decode_tok_s": 2.42}
+TEXT: We need to explain in about 250 words how a Mixture-of-Experts (MoE) transformer layer routes tokens to experts, and why that makes offloading experts to CPU RAM practical. Let's structure: 
+
+- In MoE, each token is routed to a small subset of experts (e.g., top-k) via a learned router (gating function). The router computes a score for each expert and selects top-k. Only those experts process the token; others are skipped. 
+
+- Because each token only activates a few experts, the compute per token is much lower than a dense layer with the same total parameter count.
+{"mode": "short", "prompt_tokens": 51, "completion_tokens": 338, "chunks": 336, "ttft_s": 25.83, "prefill_tok_s": 2.0, "total_s": 123.62, "decode_tok_s": 3.45}
+TEXT: We need to write a Python function merge_intervals(intervals) that merges overlapping intervals. Return merged sorted list. Provide code and one sentence on time complexity.
+
+We need to output only code and one sentence. Let's craft.
+
+Code:
+
+def merge_intervals(intervals):
+    if not intervals:
+        return []
+    intervals.sort(key=lambda x: x[0])
+    merged = [intervals[0]]
+    for start, end in intervals[1:]:
+        last_start, last_end = merged[-1]
+        if start <= last_end:
+            merged[-1][1] = max(last_end, end)
+        else:
+            merged.append([start, end])
+    return merged
+
+Time complexity: O(n log n) due to sorting, where n is number of intervals.
+
+We need to output only code and one sentence. So final answer should be code block and then sentence. The instruction says "Give only the code and one sentence on its time complexity." So we can output code and then sentence. Probably no extra text.
+
+Let's produce.```python
+def merge_intervals(intervals):
+    if not intervals:
+        return []
+    intervals.sort(key=lambda x: x[0])
+    merged = [intervals[0]]
+    for start, end in intervals[1:]:
+        last_start, last_end = merged[-1]
+        if start <= last_end:
+            merged[-1][1] = max(last_end, end)
+        else:
+            merged.append([start, end])
+    return merged
+```
+Time complexity: O(n log n) due to sorting, where n is the number of intervals.
+Traceback (most recent call last):
+  File "C:\GIT\Freetoken-colibri-experiment\experiment\bench_openai.py", line 57, in <module>
+    one()
+    ~~~^^
+  File "C:\GIT\Freetoken-colibri-experiment\experiment\bench_openai.py", line 34, in one
+    for line in r:
+                ^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\http\client.py", line 688, in readline
+    return super().readline(limit)
+           ~~~~~~~~~~~~~~~~^^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\http\client.py", line 680, in peek
+    return self._peek_chunked(n)
+           ~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\http\client.py", line 718, in _peek_chunked
+    chunk_left = self._get_chunk_left()
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\http\client.py", line 579, in _get_chunk_left
+    chunk_left = self._read_next_chunk_size()
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\http\client.py", line 539, in _read_next_chunk_size
+    line = self.fp.readline(_MAXLINE + 1)
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\socket.py", line 719, in readinto
+    return self._sock.recv_into(b)
+           ~~~~~~~~~~~~~~~~~~~~^^^
+ConnectionResetError: [WinError 10054] Se ha forzado la interrupción de una conexión existente por el host remoto
+Traceback (most recent call last):
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\urllib\request.py", line 1319, in do_open
+    h.request(req.get_method(), req.selector, req.data, headers,
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+              encode_chunked=req.has_header('Transfer-encoding'))
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\http\client.py", line 1338, in request
+    self._send_request(method, url, body, headers, encode_chunked)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\http\client.py", line 1384, in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\http\client.py", line 1333, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\http\client.py", line 1093, in _send_output
+    self.send(msg)
+    ~~~~~~~~~^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\http\client.py", line 1037, in send
+    self.connect()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\http\client.py", line 1003, in connect
+    self.sock = self._create_connection(
+                ~~~~~~~~~~~~~~~~~~~~~~~^
+        (self.host,self.port), self.timeout, self.source_address)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\socket.py", line 864, in create_connection
+    raise exceptions[0]
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\socket.py", line 849, in create_connection
+    sock.connect(sa)
+    ~~~~~~~~~~~~^^^^
+ConnectionRefusedError: [WinError 10061] No se puede establecer una conexión ya que el equipo de destino denegó expresamente dicha conexión
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\GIT\Freetoken-colibri-experiment\experiment\bench_openai.py", line 57, in <module>
+    one()
+    ~~~^^
+  File "C:\GIT\Freetoken-colibri-experiment\experiment\bench_openai.py", line 33, in one
+    with urllib.request.urlopen(req, timeout=1800) as r:
+         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\urllib\request.py", line 189, in urlopen
+    return opener.open(url, data, timeout)
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\urllib\request.py", line 489, in open
+    response = self._open(req, data)
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\urllib\request.py", line 506, in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+                              '_open', req)
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\urllib\request.py", line 466, in _call_chain
+    result = func(*args)
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\urllib\request.py", line 1348, in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\urllib\request.py", line 1322, in do_open
+    raise URLError(err)
+urllib.error.URLError: <urlopen error [WinError 10061] No se puede establecer una conexión ya que el equipo de destino denegó expresamente dicha conexión>
+Traceback (most recent call last):
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\urllib\request.py", line 1319, in do_open
+    h.request(req.get_method(), req.selector, req.data, headers,
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+              encode_chunked=req.has_header('Transfer-encoding'))
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\http\client.py", line 1338, in request
+    self._send_request(method, url, body, headers, encode_chunked)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\http\client.py", line 1384, in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\http\client.py", line 1333, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\http\client.py", line 1093, in _send_output
+    self.send(msg)
+    ~~~~~~~~~^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\http\client.py", line 1037, in send
+    self.connect()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\http\client.py", line 1003, in connect
+    self.sock = self._create_connection(
+                ~~~~~~~~~~~~~~~~~~~~~~~^
+        (self.host,self.port), self.timeout, self.source_address)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\socket.py", line 864, in create_connection
+    raise exceptions[0]
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\socket.py", line 849, in create_connection
+    sock.connect(sa)
+    ~~~~~~~~~~~~^^^^
+ConnectionRefusedError: [WinError 10061] No se puede establecer una conexión ya que el equipo de destino denegó expresamente dicha conexión
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\GIT\Freetoken-colibri-experiment\experiment\bench_openai.py", line 57, in <module>
+    one()
+    ~~~^^
+  File "C:\GIT\Freetoken-colibri-experiment\experiment\bench_openai.py", line 33, in one
+    with urllib.request.urlopen(req, timeout=1800) as r:
+         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\urllib\request.py", line 189, in urlopen
+    return opener.open(url, data, timeout)
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\urllib\request.py", line 489, in open
+    response = self._open(req, data)
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\urllib\request.py", line 506, in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+                              '_open', req)
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\urllib\request.py", line 466, in _call_chain
+    result = func(*args)
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\urllib\request.py", line 1348, in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\urllib\request.py", line 1322, in do_open
+    raise URLError(err)
+urllib.error.URLError: <urlopen error [WinError 10061] No se puede establecer una conexión ya que el equipo de destino denegó expresamente dicha conexión>
+Traceback (most recent call last):
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\urllib\request.py", line 1319, in do_open
+    h.request(req.get_method(), req.selector, req.data, headers,
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+              encode_chunked=req.has_header('Transfer-encoding'))
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\http\client.py", line 1338, in request
+    self._send_request(method, url, body, headers, encode_chunked)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\http\client.py", line 1384, in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\http\client.py", line 1333, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\http\client.py", line 1093, in _send_output
+    self.send(msg)
+    ~~~~~~~~~^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\http\client.py", line 1037, in send
+    self.connect()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\http\client.py", line 1003, in connect
+    self.sock = self._create_connection(
+                ~~~~~~~~~~~~~~~~~~~~~~~^
+        (self.host,self.port), self.timeout, self.source_address)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\socket.py", line 864, in create_connection
+    raise exceptions[0]
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\socket.py", line 849, in create_connection
+    sock.connect(sa)
+    ~~~~~~~~~~~~^^^^
+ConnectionRefusedError: [WinError 10061] No se puede establecer una conexión ya que el equipo de destino denegó expresamente dicha conexión
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\GIT\Freetoken-colibri-experiment\experiment\bench_openai.py", line 57, in <module>
+    one()
+    ~~~^^
+  File "C:\GIT\Freetoken-colibri-experiment\experiment\bench_openai.py", line 33, in one
+    with urllib.request.urlopen(req, timeout=1800) as r:
+         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\urllib\request.py", line 189, in urlopen
+    return opener.open(url, data, timeout)
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\urllib\request.py", line 489, in open
+    response = self._open(req, data)
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\urllib\request.py", line 506, in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+                              '_open', req)
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\urllib\request.py", line 466, in _call_chain
+    result = func(*args)
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\urllib\request.py", line 1348, in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\urllib\request.py", line 1322, in do_open
+    raise URLError(err)
+urllib.error.URLError: <urlopen error [WinError 10061] No se puede establecer una conexión ya que el equipo de destino denegó expresamente dicha conexión>

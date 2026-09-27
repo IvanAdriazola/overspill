@@ -1,0 +1,25 @@
+=== Overspill (native Windows) dsv4_os_direct_long_swa10 19:17:02 args: cpu --num-tokens 8192
+ready after 24s
+Traceback (most recent call last):
+  File "C:\GIT\Freetoken-colibri-experiment\experiment\bench_openai.py", line 57, in <module>
+    one()
+    ~~~^^
+  File "C:\GIT\Freetoken-colibri-experiment\experiment\bench_openai.py", line 34, in one
+    for line in r:
+                ^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\http\client.py", line 688, in readline
+    return super().readline(limit)
+           ~~~~~~~~~~~~~~~~^^^^^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\http\client.py", line 680, in peek
+    return self._peek_chunked(n)
+           ~~~~~~~~~~~~~~~~~~^^^
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\http\client.py", line 718, in _peek_chunked
+    chunk_left = self._get_chunk_left()
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\http\client.py", line 579, in _get_chunk_left
+    chunk_left = self._read_next_chunk_size()
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\http\client.py", line 539, in _read_next_chunk_size
+    line = self.fp.readline(_MAXLINE + 1)
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python313\Lib\socket.py", line 719, in readinto
+    return self._sock.recv_into(b)
+           ~~~~~~~~~~~~~~~~~~~~^^^
+ConnectionResetError: [WinError 10054] Se ha forzado la interrupción de una conexión existente por el host remoto

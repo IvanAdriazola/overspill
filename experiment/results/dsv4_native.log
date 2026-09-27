@@ -1,0 +1,20 @@
+=== DeepSeek-V4-Flash REAP-150B native 2026-09-27 17:21
+=== restart 2026-09-27 17:28: reordered (head-to-head first); the 17:21 start was stopped during the Overspill warm-up
+=== DeepSeek-V4-Flash REAP-150B native 2026-09-27 17:28
+overspill all-CPU (README settings) (flashnext_win_dsv4_os.log)
+ready after 47s
+  prompt=38 ttft=21.87 dec=2.72
+  prompt=51 ttft=17.55 dec=3.0
+  prompt=5971 ttft=381.06 dec=2.42
+llama.cpp --cpu-moe -ub 2048 (llamacpp_win_dsv4_cpumoe_ub2048.log)
+ready after 67s
+  prompt=38 ttft=31.48 dec=2.43
+  prompt=51 ttft=25.82 dec=3.38
+  prompt=5971 ttft=371.01 dec=2.4
+llama.cpp --cpu-moe -ub 512 (llamacpp_win_dsv4_cpumoe_ub512.log)
+ready after 68s
+  prompt=38 ttft=31.14 dec=2.42
+  prompt=51 ttft=25.83 dec=3.45
+llama.cpp --cpu-moe -ub 2048 (QUICK) -> === llama.cpp (native Windows b11205) dsv4_q_cpumoe_ub2048 19:04:17 args: --cpu-moe -ub 2048 ready after 37s {"mode": "short", "prompt_tokens": 38, "completion_tokens": 64, "chunks": 64, "ttft_s": 45.42, "prefill_tok_s": 0.8, "total_s": 77.82, "decode_tok_s": 1.94} TEXT: We need to explain in about 250 words how a Mixture-of-Experts (MoE) transformer layer routes tokens to experts, and why that makes offloading experts to CPU RAM practical. Let's structure:   - In MoE, each token is routed to a small subset of experts (e.g., top {"mode": "short", "prompt_tokens": 51, "completion_tokens": 64, "chunks": 64, "ttft_s": 25.15, "prefill_tok_s": 2.0, "total_s": 45.37, "decode_tok_s": 3.12} TEXT: We need to write a Python function merge_intervals(intervals) that merges overlapping intervals. Return merged sorted list. Provide code and one sentence on time complexity.  We need to output only code and one sentence. Let's craft.  Code:  def merge_intervals(intervals):     if not intervals:         prompt=38 ttft=45.42 dec=1.94 prompt=51 ttft=25.15 dec=3.12  [161s]
+llama.cpp --cpu-moe -ub 512 (QUICK) -> === llama.cpp (native Windows b11205) dsv4_q_cpumoe_ub512 19:06:58 args: --cpu-moe -ub 512 ready after 39s {"mode": "short", "prompt_tokens": 38, "completion_tokens": 64, "chunks": 64, "ttft_s": 50.36, "prefill_tok_s": 0.8, "total_s": 83.12, "decode_tok_s": 1.92} TEXT: We need to explain in about 250 words how a Mixture-of-Experts (MoE) transformer layer routes tokens to experts, and why that makes offloading experts to CPU RAM practical. Let's structure:   - In MoE, each token is routed to a small subset of experts (e.g., top {"mode": "short", "prompt_tokens": 51, "completion_tokens": 64, "chunks": 64, "ttft_s": 24.97, "prefill_tok_s": 2.0, "total_s": 45.51, "decode_tok_s": 3.07} TEXT: We need to write a Python function merge_intervals(intervals) that merges overlapping intervals. Return merged sorted list. Provide code and one sentence on time complexity.  We need to output only code and one sentence. Let's craft.  Code:  def merge_intervals(intervals):     if not intervals:         prompt=38 ttft=50.36 dec=1.92 prompt=51 ttft=24.97 dec=3.07  [168s]
+llama.cpp --n-cpu-moe 42 -ub 2048 (QUICK) -> === llama.cpp (native Windows b11205) dsv4_q_ncm42_ub2048 19:09:46 args: --n-cpu-moe 42 -ub 2048 ready after 38s {"mode": "short", "prompt_tokens": 38, "completion_tokens": 64, "chunks": 64, "ttft_s": 48.52, "prefill_tok_s": 0.8, "total_s": 91.25, "decode_tok_s": 1.48} TEXT: We need to explain in about 250 words how a Mixture-of-Experts (MoE) transformer layer routes tokens to experts, and why that makes offloading experts to CPU RAM practical. Let's structure:   - In MoE, each token is routed to a small subset of experts (e.g., top {"mode": "short", "prompt_tokens": 51, "completion_tokens": 64, "chunks": 64, "ttft_s": 31.47, "prefill_tok_s": 1.6, "total_s": 52.24, "decode_tok_s": 3.03} TEXT: We need to write a Python function merge_intervals(intervals) that merges overlapping intervals. Return merged sorted list. Provide code and one sentence on time complexity.  We need to output only code and one sentence. Let's craft.  Code:  def merge_intervals(intervals):     if not intervals:         prompt=38 ttft=48.52 dec=1.48 prompt=51 ttft=31.47 dec=3.03  [182s]

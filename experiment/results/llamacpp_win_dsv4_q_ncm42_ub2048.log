@@ -1,0 +1,16 @@
+=== llama.cpp (native Windows b11205) dsv4_q_ncm42_ub2048 19:09:46 args: --n-cpu-moe 42 -ub 2048
+ready after 38s
+{"mode": "short", "prompt_tokens": 38, "completion_tokens": 64, "chunks": 64, "ttft_s": 48.52, "prefill_tok_s": 0.8, "total_s": 91.25, "decode_tok_s": 1.48}
+TEXT: We need to explain in about 250 words how a Mixture-of-Experts (MoE) transformer layer routes tokens to experts, and why that makes offloading experts to CPU RAM practical. Let's structure: 
+
+- In MoE, each token is routed to a small subset of experts (e.g., top
+{"mode": "short", "prompt_tokens": 51, "completion_tokens": 64, "chunks": 64, "ttft_s": 31.47, "prefill_tok_s": 1.6, "total_s": 52.24, "decode_tok_s": 3.03}
+TEXT: We need to write a Python function merge_intervals(intervals) that merges overlapping intervals. Return merged sorted list. Provide code and one sentence on time complexity.
+
+We need to output only code and one sentence. Let's craft.
+
+Code:
+
+def merge_intervals(intervals):
+    if not intervals:
+       

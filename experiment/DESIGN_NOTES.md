@@ -159,3 +159,35 @@ Decode is roughly even at 52 GB. As RAM shrinks, Overspill's lead grows: +20-30%
 all-CPU is better (pinning takes RAM from the page cache). The absolute best on this PC is still native-Windows
 llama.cpp (12.6 tok/s): WSL's disk and memory path costs both engines, and Overspill can't run natively because
 FreeToken is Linux-only. A native Linux boot is the next step for bare-metal numbers.
+
+## Validation 8 - native Windows: Overspill/FreeToken vs llama.cpp at its best (2026-09-27)
+No WSL for either engine. FreeToken was ported to native Windows for this (experiment/win/, .venv-win): MSVC build
+with the CUDA 13.0 pip toolchain, AVX-512 CPU executor under MSVC, PrefetchVirtualMemory, a Windows PLE store,
+ZMQ over loopback TCP, 82/82 JIT kernels, plus fixes for two tvm-ffi Windows bugs. llama.cpp is b11205 (native
+build), tuned per model. Warm runs (a discarded warm-up first), same prompts for both engines, full 64 GB unless noted.
+
+| model | engine / config | decode tok/s (short / short / ~6k) | TTFT s (short / short / ~6k) |
+|---|---|---|---|
+| Qwen3.6-35B-A3B (fits in RAM) | **FreeToken** (stock strategy) | **65.0 / 69.2 / 66.0** | 2.1 / 0.8 / 5.8 |
+| | llama.cpp `--n-cpu-moe 24 -ub 2048` (sweep 16-40) | 45.2 / 48.3 / 44.4 | 1.2 / 0.6 / 5.8 |
+| Qwen3.8-Flash-Next (64 GB experts) | Overspill all-CPU, bf16 head in VRAM | 9.1 / 8.9 / 6.0 | 7.0 / 4.3 / 128 |
+| | **llama.cpp** `--n-cpu-moe 48 -ub 2048` | **12.6 / 11.7 / 17.1** | 7.7 / 5.0 / 83 |
+| Flash-Next, 32 GB PC (RAM hog) | Overspill all-CPU / mixed | 3.5 / 2.9 / 2.9 | 26 / 40 / 211 (mixed: 166) |
+| | **llama.cpp** | **5.4 / 3.5** / - | 30 / 28 / ~448 |
+| DeepSeek-V4-Flash REAP-150B (85 GB > RAM) | Overspill (README settings) | 2.7 / 3.0 / 2.4 | **22 / 18** / 381 -> **121** (direct reads) |
+| | llama.cpp `--cpu-moe -ub 2048` (vs ub 512, n-cpu-moe 42) | 2.4 / 3.4 / 2.4 | 31 / 26 / 371 |
+
+Verdict:
+- **The README's "6-7x llama.cpp" (DeepSeek, WSL) does not hold natively.** In WSL, llama.cpp's page-fault
+  reads were crippled by WSL's 8 MB default read-ahead (Validation 7: 0.8 tok/s on Flash-Next until tuned).
+  Natively, Windows serves llama.cpp's mmap well: DeepSeek decode is a tie.
+- FreeToken wins clearly where the experts fit in RAM + VRAM (Qwen3.6: +45% decode). llama.cpp wins Flash-Next
+  decode (small experts, FreeToken's ~0.8 ms/layer GPU-side overhead x 48 layers, 248k-vocab head).
+- Overspill's native wins: short-prompt TTFT on DeepSeek (~30%), long-prompt TTFT on DeepSeek once the
+  whole-layer prefill copy uses direct unbuffered reads (moe/win_direct_reader.py: 1.9 GB/s vs ~0.5 GB/s through
+  the mapping; 381 -> 121 s, 3x llama.cpp), and long prompts at 32 GB on Flash-Next.
+- vs itself in WSL (48 GB): native DeepSeek decode is ~12% lower (disk reads average 508 MB/s through Windows'
+  mapped-file path vs 812 MB/s under Linux) and long-prompt TTFT is 121 s vs 102 s (3 prefill chunks x 70 GB,
+  now disk-bound; FT_SWA_RATIO > 0.7 does not fit in 12 GB VRAM).
+- Next levers: layer-major prefill (read each layer once per prompt, ~40 s est.), and an Overspill-owned expert
+  RAM cache with direct reads for decode (the only path to beating llama.cpp's decode on bigger-than-RAM models).
