@@ -1313,10 +1313,7 @@ struct CpuMoeExecutor {
   }
   int64_t prefetch_units(const MoeTask* t) const {
     const int64_t per = static_cast<int64_t>(pf_tbls.size());
-    int64_t n = static_cast<int64_t>(t->num_tokens) * top_k * per;
-    if (t->next_ids != nullptr && t->next_k > 0 && t->layer_id + 1 < num_layers)
-      n += static_cast<int64_t>(t->num_tokens) * t->next_k * per;
-    return n;
+    return static_cast<int64_t>(t->num_tokens) * top_k * per;
   }
   // Serial prefetch on the submitting thread (FT_PF_SERIAL=1). By default the madvise
   // calls are instead spread over the worker pool at the start of run_task_body: with
@@ -1404,6 +1401,50 @@ struct CpuMoeExecutor {
 
   std::atomic<int64_t> p1_next{0};
   std::atomic<int64_t> pf_next{0};
+  // Router lookahead: a dedicated thread issues the next layer's predicted-expert prefetches, so the
+  // (possibly blocking) prefetch syscalls never delay this layer's GEMV workers.
+  std::thread la_thread;
+  std::mutex la_mtx;
+  std::condition_variable la_cv;
+  std::vector<std::pair<int, int32_t>> la_q;
+  bool la_stop = false;
+  void la_loop() {
+    std::vector<std::pair<int, int32_t>> work;
+    for (;;) {
+      {
+        std::unique_lock<std::mutex> lk(la_mtx);
+        la_cv.wait(lk, [&] { return la_stop || !la_q.empty(); });
+        if (la_stop) return;
+        work.swap(la_q);
+      }
+      for (const auto& le : work) {
+        for (size_t b = 0; b < pf_tbls.size(); ++b) {
+          const uintptr_t a = pf_tbls[b][le.first] + static_cast<uintptr_t>(le.second) * pf_rows[b];
+          const uintptr_t s0 = a & ~static_cast<uintptr_t>(4095);
+#if defined(__linux__)
+          madvise(reinterpret_cast<void*>(s0), pf_rows[b] + (a - s0), MADV_WILLNEED);
+#elif defined(_WIN32)
+          WIN32_MEMORY_RANGE_ENTRY r{reinterpret_cast<void*>(s0), pf_rows[b] + (a - s0)};
+          PrefetchVirtualMemory(GetCurrentProcess(), 1, &r, 0);
+#endif
+        }
+      }
+      work.clear();
+    }
+  }
+  void queue_lookahead(const MoeTask* t) {
+    if (t->next_ids == nullptr || t->next_k <= 0 || pf_tbls.empty() || t->layer_id + 1 >= num_layers) return;
+    {
+      std::lock_guard<std::mutex> lk(la_mtx);
+      if (!la_thread.joinable()) la_thread = std::thread([this] { la_loop(); });
+      const int n = t->num_tokens * t->next_k;
+      for (int i = 0; i < n; ++i) {
+        const int32_t e = t->next_ids[i];
+        if (e >= 0 && e < num_experts) la_q.emplace_back(t->layer_id + 1, e);
+      }
+    }
+    la_cv.notify_one();
+  }
   int64_t pf_total = 0;
   const bool pf_serial = [] { const char* v = getenv("FT_PF_SERIAL"); return v && *v && *v != '0'; }();
   std::atomic<int64_t> p2_next{0};
@@ -1651,6 +1692,12 @@ struct CpuMoeExecutor {
   }
 
   ~CpuMoeExecutor() {
+    {
+      std::lock_guard<std::mutex> lk(la_mtx);
+      la_stop = true;
+    }
+    la_cv.notify_all();
+    if (la_thread.joinable()) la_thread.join();
     coord_stop.store(true);
     if (coord_thread.joinable()) coord_thread.join();
     {
@@ -2031,6 +2078,7 @@ struct CpuMoeExecutor {
     }
     if (pf_serial) prefetch_routed(t);
     pf_total = pf_serial ? 0 : prefetch_units(t);
+    queue_lookahead(t);
     pf_next.store(0, std::memory_order_relaxed);
     if (prof) { pr_t1 = std::chrono::steady_clock::now(); pr_pf += ns_since(pr_t0); }
     n_iblk = (I + IBLK - 1) / IBLK;
