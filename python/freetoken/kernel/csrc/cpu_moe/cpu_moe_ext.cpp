@@ -1248,22 +1248,29 @@ struct CpuMoeExecutor {
       pf_rows.push_back(static_cast<size_t>(rows[i]));
     }
   }
-  void prefetch_routed(const MoeTask* t) const {
+  void prefetch_one(const MoeTask* t, int64_t idx) const {
 #if defined(__linux__)
-    if (pf_tbls.empty()) return;
-    const int n = t->num_tokens * top_k;
-    for (int i = 0; i < n; ++i) {
-      const int32_t e = t->ids[i];
-      if (e < 0 || e >= num_experts) continue;
-      for (size_t b = 0; b < pf_tbls.size(); ++b) {
-        const uintptr_t a = pf_tbls[b][t->layer_id] + static_cast<uintptr_t>(e) * pf_rows[b];
-        const uintptr_t s = a & ~static_cast<uintptr_t>(4095);
-        madvise(reinterpret_cast<void*>(s), pf_rows[b] + (a - s), MADV_WILLNEED);
-      }
-    }
+    const size_t nb = pf_tbls.size();
+    const int32_t e = t->ids[idx / nb];
+    if (e < 0 || e >= num_experts) return;
+    const size_t b = idx % nb;
+    const uintptr_t a = pf_tbls[b][t->layer_id] + static_cast<uintptr_t>(e) * pf_rows[b];
+    const uintptr_t s = a & ~static_cast<uintptr_t>(4095);
+    madvise(reinterpret_cast<void*>(s), pf_rows[b] + (a - s), MADV_WILLNEED);
 #else
-    (void)t;
+    (void)t; (void)idx;
 #endif
+  }
+  int64_t prefetch_units(const MoeTask* t) const {
+    return static_cast<int64_t>(t->num_tokens) * top_k * static_cast<int64_t>(pf_tbls.size());
+  }
+  // Serial prefetch on the submitting thread (FT_PF_SERIAL=1). By default the madvise
+  // calls are instead spread over the worker pool at the start of run_task_body: with
+  // many small experts (e.g. 10 routes x 6 banks per layer) the ~60 serial syscalls
+  // cost ~0.8 ms per layer before any compute could start.
+  void prefetch_routed(const MoeTask* t) const {
+    const int64_t n = prefetch_units(t);
+    for (int64_t i = 0; i < n; ++i) prefetch_one(t, i);
   }
   int H, I;
   int act, apply_on_input;
@@ -1331,7 +1338,9 @@ struct CpuMoeExecutor {
   const bool prof = [] { const char* v = getenv("FT_CPU_MOE_PROF"); return v && *v && *v != '0'; }();
   std::chrono::steady_clock::time_point pr_t0, pr_t1, pr_tprev;
   bool pr_have_prev = false;
-  double pr_gap = 0;
+  double pr_gap = 0, pr_gap_c = 0, pr_gap_o = 0;
+  int64_t pr_nc = 0, pr_no = 0;
+  int pr_prev_layer = -2, pr_cur_layer = -2;
   std::atomic<int64_t> pr_wake_ns{-1};
   double pr_pf = 0, pr_wake = 0, pr_body = 0, pr_sync = 0;
   int64_t pr_n = 0;
@@ -1340,6 +1349,9 @@ struct CpuMoeExecutor {
   }
 
   std::atomic<int64_t> p1_next{0};
+  std::atomic<int64_t> pf_next{0};
+  int64_t pf_total = 0;
+  const bool pf_serial = [] { const char* v = getenv("FT_PF_SERIAL"); return v && *v && *v != '0'; }();
   std::atomic<int64_t> p2_next{0};
   std::atomic<int64_t> prt_next{0};  // ds_fp4 intermediate fp8 round-trip phase
   int64_t p1_total = 0, p2_total = 0, prt_total = 0;
@@ -1886,6 +1898,11 @@ struct CpuMoeExecutor {
   void run_task_body(const MoeTask* t) {
     int local_sense = 0;
     for (;;) {
+      int64_t q = pf_next.fetch_add(1, std::memory_order_relaxed);
+      if (q >= pf_total) break;
+      prefetch_one(t, q);
+    }
+    for (;;) {
       int64_t p = p1_next.fetch_add(1, std::memory_order_relaxed);
       if (p >= p1_total) break;
       do_pass1(t, p);
@@ -1940,9 +1957,16 @@ struct CpuMoeExecutor {
   void submit(MoeTask* t) {
     if (prof) {
       pr_t0 = std::chrono::steady_clock::now(); pr_wake_ns.store(-1);
-      if (pr_have_prev) pr_gap += std::chrono::duration_cast<std::chrono::nanoseconds>(pr_t0 - pr_tprev).count();
+      if (pr_have_prev) {
+        const double g = std::chrono::duration_cast<std::chrono::nanoseconds>(pr_t0 - pr_tprev).count();
+        pr_gap += g;
+        if (t->layer_id == pr_prev_layer + 1) { pr_gap_c += g; ++pr_nc; } else { pr_gap_o += g; ++pr_no; }
+      }
+      pr_cur_layer = t->layer_id;
     }
-    prefetch_routed(t);
+    if (pf_serial) prefetch_routed(t);
+    pf_total = pf_serial ? 0 : prefetch_units(t);
+    pf_next.store(0, std::memory_order_relaxed);
     if (prof) { pr_t1 = std::chrono::steady_clock::now(); pr_pf += ns_since(pr_t0); }
     n_iblk = (I + IBLK - 1) / IBLK;
     n_hblk = (H + HBLK - 1) / HBLK;
@@ -2021,11 +2045,13 @@ struct CpuMoeExecutor {
     sync_cv.wait(lk, [&] { return completed.load(std::memory_order_acquire) >= target; });
     if (prof) {
       pr_sync += ns_since(pr_t0);
-      pr_tprev = std::chrono::steady_clock::now(); pr_have_prev = true;
+      pr_tprev = std::chrono::steady_clock::now(); pr_have_prev = true; pr_prev_layer = pr_cur_layer;
       if (++pr_n == 480) {
-        fprintf(stderr, "[cpu_moe prof] per task us: prefetch %.1f wake %.1f compute %.1f submit->sync_return %.1f | gap_between_tasks %.1f (threads %d)\n",
-                pr_pf / 480e3, pr_wake / 480e3, pr_body / 480e3, pr_sync / 480e3, pr_gap / 480e3, (int)num_threads);
-        pr_pf = pr_wake = pr_body = pr_sync = pr_gap = 0; pr_n = 0;
+        fprintf(stderr, "[cpu_moe prof] per task us: prefetch %.1f wake %.1f compute %.1f submit->sync_return %.1f | gap_between_tasks %.1f [consecutive-layer %.1f x%lld, other %.1f x%lld] (threads %d)\n",
+                pr_pf / 480e3, pr_wake / 480e3, pr_body / 480e3, pr_sync / 480e3, pr_gap / 480e3,
+                pr_nc ? pr_gap_c / pr_nc / 1e3 : 0.0, (long long)pr_nc, pr_no ? pr_gap_o / pr_no / 1e3 : 0.0,
+                (long long)pr_no, (int)num_threads);
+        pr_pf = pr_wake = pr_body = pr_sync = pr_gap = pr_gap_c = pr_gap_o = 0; pr_n = pr_nc = pr_no = 0;
       }
     }
   }
