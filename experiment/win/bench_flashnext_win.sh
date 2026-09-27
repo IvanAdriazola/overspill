@@ -26,7 +26,8 @@ if kill -0 $SRV 2>/dev/null && ! grep -q -E "worker exited|worker is gone|Traceb
   "$PY" "$BENCH" http://127.0.0.1:1919 flashnext 1 '{"max_tokens": 400, "_full_text": true, "_prompt": "Write a Python function merge_intervals(intervals) that takes a list of [start, end] pairs and returns the merged, sorted list of non-overlapping intervals. Give only the code and one sentence on its time complexity."}' 2>&1 | tee -a "$LOG"
   "$PY" "$BENCH" http://127.0.0.1:1919 flashnext 1 '{"_long_prompt": true, "_full_text": true}' 2>&1 | tee -a "$LOG"
 fi
-# stop the server tree (ft.exe + its engine worker python processes)
-powershell.exe -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { \$_.CommandLine -match 'ft(\.exe)?\"? serve|freetoken' -and \$_.CommandLine -match 'flashnext' } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force -ErrorAction SilentlyContinue }"
+# stop the server: ft.exe and its whole process tree (its multiprocessing workers have generic command lines,
+# so only a tree kill catches them; killing the parent alone orphans them)
+for pid in $(MSYS_NO_PATHCONV=1 tasklist.exe /FI "IMAGENAME eq ft.exe" /FO CSV /NH | grep -i ft.exe | cut -d, -f2 | tr -d '"'); do MSYS_NO_PATHCONV=1 taskkill.exe /F /T /PID "$pid" >/dev/null 2>&1; done
 kill $SRV $MON 2>/dev/null
 grep -E '^\{' "$LOG" | sed -E 's/.*"prompt_tokens": ([0-9]+).*"ttft_s": ([0-9.]+).*"decode_tok_s": ([0-9.]+).*/prompt=\1 ttft=\2 dec=\3/'
