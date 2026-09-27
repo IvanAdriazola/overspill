@@ -1326,6 +1326,18 @@ struct CpuMoeExecutor {
   MoeTask* cur_task = nullptr;
   std::atomic<uint64_t> submitted{0};
   std::atomic<uint64_t> completed{0};
+  // FT_CPU_MOE_PROF=1: per-task timing (submit->prefetch done->first worker awake->done),
+  // averaged and printed to stderr every 480 tasks (~10 decode tokens on a 48-layer model).
+  const bool prof = [] { const char* v = getenv("FT_CPU_MOE_PROF"); return v && *v && *v != '0'; }();
+  std::chrono::steady_clock::time_point pr_t0, pr_t1, pr_tprev;
+  bool pr_have_prev = false;
+  double pr_gap = 0;
+  std::atomic<int64_t> pr_wake_ns{-1};
+  double pr_pf = 0, pr_wake = 0, pr_body = 0, pr_sync = 0;
+  int64_t pr_n = 0;
+  static int64_t ns_since(std::chrono::steady_clock::time_point a) {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - a).count();
+  }
 
   std::atomic<int64_t> p1_next{0};
   std::atomic<int64_t> p2_next{0};
@@ -1909,8 +1921,13 @@ struct CpuMoeExecutor {
         my_gen = cur_gen;
         t = cur_task;
       }
+      if (prof) { int64_t exp = -1; pr_wake_ns.compare_exchange_strong(exp, ns_since(pr_t1)); }
       run_task_body(t);
       if (done_count.fetch_add(1) + 1 == num_threads) {
+        if (prof) {
+          const int64_t w = pr_wake_ns.load();
+          pr_wake += w; pr_body += ns_since(pr_t1) - w;
+        }
         completed.store(my_gen, std::memory_order_release);
         {
           std::lock_guard<std::mutex> lk(sync_mtx);
@@ -1921,7 +1938,12 @@ struct CpuMoeExecutor {
   }
 
   void submit(MoeTask* t) {
+    if (prof) {
+      pr_t0 = std::chrono::steady_clock::now(); pr_wake_ns.store(-1);
+      if (pr_have_prev) pr_gap += std::chrono::duration_cast<std::chrono::nanoseconds>(pr_t0 - pr_tprev).count();
+    }
     prefetch_routed(t);
+    if (prof) { pr_t1 = std::chrono::steady_clock::now(); pr_pf += ns_since(pr_t0); }
     n_iblk = (I + IBLK - 1) / IBLK;
     n_hblk = (H + HBLK - 1) / HBLK;
     // Grow the per-token intermediate scratch if a larger batch shows up than the
@@ -1997,6 +2019,16 @@ struct CpuMoeExecutor {
     const uint64_t target = submitted.load(std::memory_order_acquire);
     std::unique_lock<std::mutex> lk(sync_mtx);
     sync_cv.wait(lk, [&] { return completed.load(std::memory_order_acquire) >= target; });
+    if (prof) {
+      pr_sync += ns_since(pr_t0);
+      pr_tprev = std::chrono::steady_clock::now(); pr_have_prev = true;
+      if (++pr_n == 480) {
+        fprintf(stderr, "[cpu_moe prof] per task us: prefetch %.1f wake %.1f compute %.1f submit->sync_return %.1f | gap_between_tasks %.1f (threads %d)
+",
+                pr_pf / 480e3, pr_wake / 480e3, pr_body / 480e3, pr_sync / 480e3, pr_gap / 480e3, (int)num_threads);
+        pr_pf = pr_wake = pr_body = pr_sync = pr_gap = 0; pr_n = 0;
+      }
+    }
   }
 
   void submit_with_cuda_stream(uintptr_t stream, uintptr_t task) {
