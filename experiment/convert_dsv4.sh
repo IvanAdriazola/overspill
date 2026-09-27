@@ -5,4 +5,6 @@ export CUDA_HOME=/usr/local/cuda
 export TVM_FFI_CUDA_ARCH_LIST=8.6 TORCH_CUDA_ARCH_LIST=8.6 FLASHINFER_CUDA_ARCH_LIST=8.6
 export PYTHONPATH=$HOME/src/freetoken-exp/python
 cd ~/ft
-exec .venv/bin/ft checkpoint --model ~/models/dsv4_reap150b --out ~/models/dsv4_reap150b_ftw "$@"
+SRC=${DSV4_SRC:-$HOME/models/dsv4_reap150b}; OUT=${DSV4_OUT:-$HOME/models/dsv4_reap150b_ftw}
+echo "convert $SRC -> $OUT"
+exec .venv/bin/ft checkpoint --model "$SRC" --out "$OUT" "$@"
