@@ -248,7 +248,10 @@ class CpuMoeExecutor:
         self.isa = self._ext.isa_name()
         # Tiering experiment: file-mapped banks -> madvise(WILLNEED) each routed expert's rows
         # before the workers touch them (large async reads instead of page-fault-sized ones).
-        if os.environ.get("FT_FILE_BANKS", "").lower() in ("1", "true", "yes", "on") and hasattr(self._ext, "set_prefetch"):
+        # FT_WILLNEED=0 turns it off (A/B: it pays off for big experts read from disk; for many small,
+        # mostly-cached experts the ~(experts x banks x layers) syscalls per token may cost more than they save).
+        willneed = os.environ.get("FT_WILLNEED", "1").lower() not in ("0", "false", "no", "off")
+        if willneed and os.environ.get("FT_FILE_BANKS", "").lower() in ("1", "true", "yes", "on") and hasattr(self._ext, "set_prefetch"):
             tables, rows = [], []
             for per_layer in cache.bank_sources.values():
                 if per_layer[0].dim() == 0 or per_layer[0].shape[0] != self.num_experts:
