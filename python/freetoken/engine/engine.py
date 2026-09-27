@@ -1294,6 +1294,13 @@ def _pin_budget_bytes(reserved: int = 0) -> int | None:
     WSL's WDDM-backed CUDA caps pinning near half of RAM, shared across processes -- budget 40%. FREETOKEN_PIN_BUDGET_GB overrides anywhere. ``reserved`` subtracts host bytes already pinned outside the expert banks (qwen4_exp's PLE table)."""
     if env := os.environ.get("FREETOKEN_PIN_BUDGET_GB"):
         cap = int(float(env) * 2**30)
+    elif os.name == "nt":  # native Windows: WDDM caps pinning like WSL does
+        from freetoken.utils.winsys import physical_memory_bytes
+
+        total = physical_memory_bytes()
+        if total is None:
+            return None
+        cap = int(total * 0.4)
     elif not hasattr(os, "uname") or "microsoft" not in os.uname().release.lower():  # WSL kernel tag
         return None
     else:

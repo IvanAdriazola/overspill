@@ -1623,6 +1623,10 @@ struct CpuMoeExecutor {
     CPU_ZERO(&set);
     CPU_SET(cpu, &set);
     pthread_setaffinity_np(pthread_self(), sizeof(set), &set);
+#elif defined(_WIN32)
+    if (core_ids.empty()) return;
+    const int cpu = core_ids[tid % static_cast<int>(core_ids.size())];
+    if (cpu < 64) SetThreadAffinityMask(GetCurrentThread(), DWORD_PTR(1) << cpu);  // one processor group
 #else
     (void)tid;
 #endif
@@ -2136,6 +2140,9 @@ struct CpuMoeExecutor {
         CPU_SET(pin_core, &set);
         pthread_setaffinity_np(pthread_self(), sizeof(set), &set);
       }
+#elif defined(_WIN32)
+      if (pin_core >= 0 && pin_core < 64)
+        SetThreadAffinityMask(GetCurrentThread(), DWORD_PTR(1) << pin_core);
 #endif
       coordinator_loop();
     });

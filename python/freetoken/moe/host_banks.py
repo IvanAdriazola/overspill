@@ -130,15 +130,20 @@ class HostBank:
         self = cls.__new__(cls)
         elsize = torch.empty((), dtype=dtype).element_size()
         self.nbytes = math.prod(shape) * elsize
-        fd = os.open(path, os.O_RDONLY)
+        # ACCESS_COPY == MAP_PRIVATE | PROT_READ | PROT_WRITE, and exists on Windows too, whose
+        # map offsets must be multiples of the 64 KB allocation granularity: map from the
+        # granule below and skip the head.
+        head = offset % mmap.ALLOCATIONGRANULARITY
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_BINARY", 0))
         try:
-            self._buf = mmap.mmap(fd, self.nbytes, flags=mmap.MAP_PRIVATE,
-                                  prot=mmap.PROT_READ | mmap.PROT_WRITE, offset=offset)
+            self._buf = mmap.mmap(fd, self.nbytes + head, access=mmap.ACCESS_COPY, offset=offset - head)
         finally:
             os.close(fd)  # the mapping keeps its own reference to the file
         _LIVE_BUFFERS.append(self._buf)
-        self.addr = ctypes.addressof(ctypes.c_char.from_buffer(self._buf))
-        self.tensor = torch.frombuffer(self._buf, dtype=dtype, count=self.nbytes // elsize).view(*shape)
+        self.addr = ctypes.addressof(ctypes.c_char.from_buffer(self._buf, head))
+        self.tensor = torch.frombuffer(self._buf, dtype=dtype, count=self.nbytes // elsize,
+                                       offset=head).view(*shape)
+        self._head = head
         self._pinned = False
         self._locked = False
         self._file = True
@@ -155,7 +160,9 @@ class HostBank:
         return HostResidency.PAGEABLE
 
     def memoryview(self) -> memoryview:
-        return memoryview(self._buf)
+        head = getattr(self, "_head", 0)  # file banks map from the allocation granule below
+        mv = memoryview(self._buf)
+        return mv[head : head + self.nbytes] if head else mv
 
     def pin(self) -> None:
         """cudaHostRegister the (now-filled) buffer -- pin-after-fill.

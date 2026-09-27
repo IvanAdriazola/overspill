@@ -101,6 +101,12 @@ def physical_core_cpus() -> list[int]:
         allowed = sorted(os.sched_getaffinity(0))
     except AttributeError:
         allowed = list(range(os.cpu_count() or 1))
+    if os.name == "nt":  # no sysfs: ask Windows which logical CPUs share a core
+        from freetoken.utils.winsys import physical_core_first_cpus
+
+        firsts = [c for c in physical_core_first_cpus() if c in set(allowed)]
+        if firsts:
+            return firsts
     reps: list[int] = []
     seen: set[str] = set()
     for cpu in allowed:
