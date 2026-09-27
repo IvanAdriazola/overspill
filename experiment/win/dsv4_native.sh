@@ -27,7 +27,8 @@ unset FT_MODEL_DIR FT_FILE_BANKS FT_EMBED_HOST FT_HEAD_HOST FT_SWA_RATIO FT_CPU_
 # llama.cpp (native), same GGUF as the README's llama.cpp row
 export LLAMA_GGUF_WIN="G:/AIModels/dsv4/DeepSeek-V4-Flash-0731-reap-150b-MXFP4_MOE.gguf"
 run ll-warm bench_llamacpp_win.sh dsv4_warmup --cpu-moe
-for cfg in "cpumoe_ub512:--cpu-moe -ub 512" "cpumoe_ub2048:--cpu-moe -ub 2048" "ncm42_ub2048:--n-cpu-moe 42 -ub 2048"; do
+# the head-to-head first (-ub 2048 was llama.cpp's clear best on Flash-Next); the other two are confirmation runs
+for cfg in "cpumoe_ub2048:--cpu-moe -ub 2048" "cpumoe_ub512:--cpu-moe -ub 512" "ncm42_ub2048:--n-cpu-moe 42 -ub 2048"; do
   name=${cfg%%:*}; args=${cfg#*:}
   run "ll-$name" bench_llamacpp_win.sh "dsv4_$name" $args
   summ "llama.cpp $args" "llamacpp_win_dsv4_$name.log"
