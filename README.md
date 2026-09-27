@@ -21,6 +21,16 @@ hierarchy under it.
 
 ## Results
 
+> **Correction (2026-09-27): the llama.cpp numbers below are not representative.** llama.cpp ran inside
+> the same WSL2 VM as the other engines, and WSL2's virtual disk defaults to an 8 MB read-ahead, which
+> cripples llama.cpp's mmap page-fault reads of experts that are not in RAM (on another MoE model the same
+> setting took llama.cpp from ~7 tok/s down to 0.8 tok/s). So the "6-7x llama.cpp" comparison below mostly
+> measures that WSL handicap, not the engines. Overspill has since been ported to native Windows and both
+> engines are being re-run natively, like for like: first native results on this model show decode roughly
+> **tied** with a tuned native llama.cpp, with Overspill ahead on time to first token. Updated numbers will
+> replace this section; details and raw logs are in
+> [`experiment/DESIGN_NOTES.md`](experiment/DESIGN_NOTES.md) (Validations 7 and 8).
+
 DeepSeek-V4-Flash REAP-150B (`puwaer/DeepSeek-V4-Flash-0731-reap-150b`, 85 GB with FP4 experts). The model
 is **bigger than RAM**: the machine has 64 GB, but every engine ran inside the same WSL2 VM capped at 48 GB.
 Hardware: RTX 3060 12 GB, Ryzen 9 7900, DDR5-6000, NVMe (through WSL2's virtual disk). All runs are on this
@@ -38,8 +48,9 @@ explanation, a coding question, and a 6,446-token Python-module summary (a priva
 | time to first token, first short prompt after a cold start | 43 s | **25 s** | 26 s | 44 s |
 | time to first token, next short prompt | **10 s** | 18 s | 18 s | 40 s |
 
-That is about **2.7x Colibri and 6-7x llama.cpp on decode**, and **3.7x llama.cpp / 15x Colibri on a
-6.4k-token prompt**. On the very first request after a cold start, Colibri is quicker to the first token.
+That is about **2.7x Colibri** on decode and **15x Colibri on a 6.4k-token prompt**. (The llama.cpp column
+is affected by the WSL read-ahead issue described in the correction above; the "6-7x llama.cpp" originally
+stated here does not hold for llama.cpp run natively.) On the very first request after a cold start, Colibri is quicker to the first token.
 All three use the same model with the same FP4 experts. The ~8 GB of non-expert weights differ slightly:
 llama.cpp's GGUF stores them in Q8_0, while FreeToken and Colibri use DeepSeek's original FP8, so outputs
 are not bit-identical across engines. Colibri "warm" = a second session with a warm page cache. Exact
