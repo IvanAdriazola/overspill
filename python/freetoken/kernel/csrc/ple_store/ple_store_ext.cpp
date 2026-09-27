@@ -20,10 +20,18 @@
 #include <unordered_map>
 #include <vector>
 
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <malloc.h>
+#include <windows.h>
+#else
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#endif
 
 #if defined(__linux__) && __has_include(<linux/io_uring.h>)
 #include <linux/io_uring.h>
@@ -48,14 +56,38 @@ constexpr unsigned kReaderThreads = 16;
 
 // ---- portability shims ----
 
+// An open table file: a POSIX fd, or a Windows HANDLE (as an integer).
+#if defined(_WIN32)
+using file_t = intptr_t;
+#else
+using file_t = int;
+#endif
+
 void release_store_i64(int64_t *ptr, int64_t value) {
+#if defined(_MSC_VER) && !defined(__clang__)
+  _InterlockedExchange64(reinterpret_cast<volatile long long *>(ptr), value);  // full barrier
+#else
   __atomic_store_n(ptr, value, __ATOMIC_RELEASE);
+#endif
 }
 
 uint8_t *page_aligned_alloc(size_t bytes) {
+#if defined(_WIN32)
+  void *p = _aligned_malloc(bytes, kPage);
+  if (p == nullptr) throw std::bad_alloc();
+#else
   void *p = nullptr;
   if (posix_memalign(&p, kPage, bytes) != 0) throw std::bad_alloc();
+#endif
   return static_cast<uint8_t *>(p);
+}
+
+void page_aligned_free(void *p) {
+#if defined(_WIN32)
+  _aligned_free(p);
+#else
+  free(p);
+#endif
 }
 
 // Stream memops for the flag-sync fast path, resolved from the driver at runtime.
@@ -68,15 +100,22 @@ constexpr unsigned kCuWriteDefault = 0x0;
 
 bool cumemop_resolve() {
   static bool resolved = [] {
+#if defined(_WIN32)
+    HMODULE h = ::LoadLibraryA("nvcuda.dll");
+    if (h == nullptr) return false;
+    auto sym = [h](const char *n) { return reinterpret_cast<void *>(::GetProcAddress(h, n)); };
+#else
     void *h = dlopen("libcuda.so.1", RTLD_LAZY | RTLD_LOCAL);
     if (h == nullptr) h = dlopen("libcuda.so", RTLD_LAZY | RTLD_LOCAL);
     if (h == nullptr) return false;
-    g_cu_write64 = reinterpret_cast<CuMemOp64Fn>(dlsym(h, "cuStreamWriteValue64_v2"));
+    auto sym = [h](const char *n) { return dlsym(h, n); };
+#endif
+    g_cu_write64 = reinterpret_cast<CuMemOp64Fn>(sym("cuStreamWriteValue64_v2"));
     if (g_cu_write64 == nullptr)
-      g_cu_write64 = reinterpret_cast<CuMemOp64Fn>(dlsym(h, "cuStreamWriteValue64"));
-    g_cu_wait64 = reinterpret_cast<CuMemOp64Fn>(dlsym(h, "cuStreamWaitValue64_v2"));
+      g_cu_write64 = reinterpret_cast<CuMemOp64Fn>(sym("cuStreamWriteValue64"));
+    g_cu_wait64 = reinterpret_cast<CuMemOp64Fn>(sym("cuStreamWaitValue64_v2"));
     if (g_cu_wait64 == nullptr)
-      g_cu_wait64 = reinterpret_cast<CuMemOp64Fn>(dlsym(h, "cuStreamWaitValue64"));
+      g_cu_wait64 = reinterpret_cast<CuMemOp64Fn>(sym("cuStreamWaitValue64"));
     return g_cu_write64 != nullptr && g_cu_wait64 != nullptr;
   }();
   return resolved;
@@ -106,14 +145,29 @@ void signal_flag(uintptr_t flag_addr) {
 
 // Read at least need bytes; len is the larger aligned span the request must keep.
 // Resuming past need is not safe: a read that crossed EOF ends at an unaligned offset.
-void pread_min(int fd, uint8_t *buf, int64_t len, int64_t need, int64_t off) {
+void pread_min(file_t fd, uint8_t *buf, int64_t len, int64_t need, int64_t off) {
   int64_t done = 0;
   while (done < need) {
+#if defined(_WIN32)
+    // Positional read on a synchronous handle: the OVERLAPPED offset is honored and the call
+    // is safe to issue from several threads at once (the implicit file pointer is unused).
+    OVERLAPPED ov{};
+    const uint64_t pos = (uint64_t)(off + done);
+    ov.Offset = (DWORD)(pos & 0xffffffffu);
+    ov.OffsetHigh = (DWORD)(pos >> 32);
+    DWORD got = 0;
+    if (!::ReadFile((HANDLE)fd, buf + done, (DWORD)(len - done), &got, &ov)) {
+      const DWORD err = ::GetLastError();
+      if (err == ERROR_HANDLE_EOF) break;
+      throw std::runtime_error("ReadFile: error " + std::to_string(err));
+    }
+#else
     ssize_t got = ::pread(fd, buf + done, len - done, off + done);
     if (got < 0) {
       if (errno == EINTR) continue;
       throw std::runtime_error(std::string("pread: ") + std::strerror(errno));
     }
+#endif
     if (got == 0) break;
     done += got;
   }
@@ -122,6 +176,47 @@ void pread_min(int fd, uint8_t *buf, int64_t len, int64_t need, int64_t off) {
                              std::to_string(done) + " of " + std::to_string(need));
 }
 
+#if defined(_WIN32)
+// Windows: FILE_FLAG_NO_BUFFERING is O_DIRECT's twin (same sector-aligned offset/length/buffer
+// rules, which the callers already meet for O_DIRECT); RANDOM_ACCESS is posix_fadvise(RANDOM).
+class TableFile {
+ public:
+  explicit TableFile(const std::string &path) {
+    HANDLE h = ::CreateFileA(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+                             FILE_FLAG_NO_BUFFERING | FILE_FLAG_RANDOM_ACCESS, nullptr);
+    direct_ = h != INVALID_HANDLE_VALUE;
+    if (!direct_)
+      h = ::CreateFileA(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+                        FILE_FLAG_RANDOM_ACCESS, nullptr);
+    if (h == INVALID_HANDLE_VALUE)
+      throw std::runtime_error(path + ": CreateFile error " + std::to_string(::GetLastError()));
+    LARGE_INTEGER sz{};
+    if (!::GetFileSizeEx(h, &sz)) {
+      ::CloseHandle(h);
+      throw std::runtime_error(path + ": GetFileSizeEx error " + std::to_string(::GetLastError()));
+    }
+    fd_ = (file_t)h;
+    size_ = sz.QuadPart;
+  }
+
+  ~TableFile() {
+    if (fd_ != 0) ::CloseHandle((HANDLE)fd_);
+  }
+
+  TableFile(const TableFile &) = delete;
+  TableFile &operator=(const TableFile &) = delete;
+
+  bool direct_io() const { return direct_; }
+  file_t native_fd() const { return fd_; }
+  int64_t size() const { return size_; }
+  void discard_cache(int64_t, int64_t) const {}  // no per-range DONTNEED on Windows
+
+ private:
+  file_t fd_ = 0;
+  bool direct_ = false;
+  int64_t size_ = 0;
+};
+#else
 class TableFile {
  public:
   explicit TableFile(const std::string &path) {
@@ -149,7 +244,7 @@ class TableFile {
   TableFile &operator=(const TableFile &) = delete;
 
   bool direct_io() const { return direct_; }
-  int native_fd() const { return fd_; }
+  file_t native_fd() const { return fd_; }
   int64_t size() const { return size_; }
 
   // keep buffered fallback reads out of the page cache; a no-op under direct I/O
@@ -162,6 +257,7 @@ class TableFile {
   bool direct_ = false;
   int64_t size_ = 0;
 };
+#endif
 
 // ---- BatchReader: platform seam for parallel positioned reads ----
 
@@ -171,7 +267,7 @@ class BatchReader {
   virtual ~BatchReader() = default;
   virtual std::string name() const = 0;
   virtual unsigned capacity() const = 0;
-  virtual void submit(unsigned tag, int fd, uint8_t *buf, int64_t len, int64_t need,
+  virtual void submit(unsigned tag, file_t fd, uint8_t *buf, int64_t len, int64_t need,
                       int64_t off) = 0;
   virtual unsigned wait_one() = 0;
   // reap every in-flight read so stale completions cannot leak into the next fill
@@ -203,7 +299,7 @@ class ThreadPoolBatchReader final : public BatchReader {
   std::string name() const override { return "pread-pool x" + std::to_string(workers_.size()); }
   unsigned capacity() const override { return kBatchEntries; }
 
-  void submit(unsigned tag, int fd, uint8_t *buf, int64_t len, int64_t need,
+  void submit(unsigned tag, file_t fd, uint8_t *buf, int64_t len, int64_t need,
               int64_t off) override {
     {
       std::lock_guard<std::mutex> lock(mu_);
@@ -234,7 +330,7 @@ class ThreadPoolBatchReader final : public BatchReader {
  private:
   struct Req {
     unsigned tag;
-    int fd;
+    file_t fd;
     uint8_t *buf;
     int64_t len;
     int64_t need;
@@ -329,7 +425,7 @@ class IoUringBatchReader final : public BatchReader {
   std::string name() const override { return "io_uring"; }
   unsigned capacity() const override { return entries_; }
 
-  void submit(unsigned tag, int fd, uint8_t *buf, int64_t len, int64_t need,
+  void submit(unsigned tag, file_t fd, uint8_t *buf, int64_t len, int64_t need,
               int64_t off) override {
     io_uring_sqe *sqe = &sqes_[sq_shadow_tail_ & *sq_mask_];
     std::memset(sqe, 0, sizeof(*sqe));
@@ -474,7 +570,7 @@ class PleStore {
   // reader first: a still-running read must not land in freed bounce memory
   ~PleStore() {
     reader_.reset();
-    free(bounce_);
+    page_aligned_free(bounce_);
   }
 
   PleStore(const PleStore &) = delete;

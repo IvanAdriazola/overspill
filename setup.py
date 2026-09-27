@@ -70,16 +70,16 @@ setup(
             libraries=["cudart"],
             extra_compile_args=_CXX_FLAGS + _PTHREAD,
         ),
-        # --ple-backend disk row store; Linux-only until the TableFile/BatchReader seams grow Windows bodies
+        # --ple-backend disk row store (TableFile/BatchReader have POSIX and Windows bodies)
         *([
             CppExtension(
                 name="freetoken.kernel._ple_store",
                 sources=[
                     "python/freetoken/kernel/csrc/ple_store/ple_store_ext.cpp",
                 ],
-                extra_compile_args=["-O3", "-std=c++17"],
+                extra_compile_args=_CXX_FLAGS,
             )
-        ] if sys.platform == "linux" else []),
+        ] if sys.platform in ("linux", "win32") else []),
     ],
     cmdclass={"build_ext": BuildExtension.with_options(use_ninja=True)},
 )
