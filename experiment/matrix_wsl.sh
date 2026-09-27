@@ -18,7 +18,7 @@ export GPU_LOCK_MAX_MINUTES=150
 # Block-device read-ahead (KB) of the G: model disk, per engine. WSL resets it to 8192 on every restart, which
 # cripples llama.cpp's page-fault reads (0.8 tok/s at 52 GB); its sweep 32-8192 KB picked 128 (results/readahead_sweep).
 LLAMA_RA=${LLAMA_RA:-128}
-OS_RA=${OS_RA:-128}
+OS_RA=${OS_RA:-8192}   # Overspill: 8192 (WSL default) beat 128 at 52 GB: long-prompt TTFT 36 vs 78 s, decode 7.8/7.0/6.3 vs 7.4/6.6/4.3
 setra() { MSYS_NO_PATHCONV=1 wsl.exe -d Ubuntu-24.04 -u root -- bash /mnt/c/GIT/Freetoken-colibri-experiment/experiment/gmodels/set_readahead.sh "$1" | tee -a "$SUMMARY"; }
 LLAMA_ARGS=(--n-cpu-moe 48 -ub 2048)   # best native-Windows config (sweep: n-cpu-moe 40-48, ub 512/2048, threads 8-12)
 
