@@ -1,0 +1,3 @@
+=== llama.cpp (WSL) ra512 03:41:09 gguf: /mnt/wsl/gmodels/gguf/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf args: --n-cpu-moe 48 -ub 2048
+server died
+ready after 1s

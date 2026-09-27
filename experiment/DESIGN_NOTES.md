@@ -124,3 +124,38 @@ With a model bigger than RAM: ready after 582 s (vs ~106 s), a 5-token prompt to
 was processing at 0.18 tok/s after ~50 min. Disk reads fell to 30-60 MB/s (vs 1-2 GB/s normally). Likely cause:
 unified memory makes the GPU fault on pages that themselves have to come from disk, in tiny pieces. Aborted.
 Not yet separated: -ub 2048 alone, without unified memory.
+
+## Validation 7 - Qwen3.8-Flash-Next: Overspill tuning, then Overspill vs llama.cpp like for like (2026-09-27)
+Model: Qwen3.8-Flash-Next (48 layers, 512 experts, top-10, ~64 GB of experts). Overspill: NVFP4 FTW. llama.cpp
+b11205: UD-IQ4_XS GGUF. All runs warm (a discarded warm-up run first), same three prompts as the other validations.
+
+**Overspill tuning** (48 GB WSL, profiled with `FT_CPU_MOE_PROF=1`), decode 6.4 -> 7.3 tok/s:
+- `FT_WILLNEED=0` (no routed-expert prefetch): 0.83 tok/s. The prefetch is essential.
+- Raising the pin budget (24 / 30 GB) was worse: it takes RAM from the page cache that holds the file-mapped layers.
+- Per token (~155 ms): the serial madvise calls took ~27 ms (spread over the worker pool: small gain); CPU expert
+  compute ~40-55 ms; GPU work plus handoff between CPU layers only 0.7 ms per layer; two ~36 ms stalls, one of
+  them the bf16 host LM head (1.27 GB over PCIe per token). `FT_HEAD_I8=1` (per-row int8 head) gave +12% with
+  the same greedy text; now the default. The bf16 head in VRAM doesn't fit (MoE cache minimum 1.63 GB > 0.76 GB).
+- 58 GB for WSL was too much: Windows fell to ~1 GB free and paged the VM out (decode collapsed to 1.7-3.5).
+
+**Native Windows llama.cpp, best config** (all 64 GB, `--n-cpu-moe 48 -ub 2048`, 11 threads): decode
+12.6 / 11.7 / 17.1 tok/s, TTFT 7.7 / 5.0 / 83 s. The WSL numbers below are lower for both engines: inside WSL
+every page-cache miss goes through the VM and its virtual disk.
+
+**Like for like (`matrix_wsl.sh`)**: both engines inside the same WSL VM, both reading from the same ext4 disk
+on G: (gmodels helper distro; O_DIRECT reads 1630 MB/s sequential, 750 MB/s random 2.7 MB), per RAM cap. Each
+engine at its best read-ahead: WSL's 8 MB default crippled llama.cpp (0.8 tok/s); its sweep (32 KB-8 MB,
+`results/readahead_sweep.log`) picked 128 KB. Overspill is best at 8 MB (long-prompt TTFT 36 s vs 78 s at 128 KB).
+
+| WSL RAM | Overspill mixed | Overspill cpu | llama.cpp |
+|---|---|---|---|
+| 52 GB | **8.0 / 7.0** / 6.5 tok/s, TTFT **7.2 / 6.7 / 36 s** | 7.1 / **7.3** / 5.6, TTFT 6.8 / 3.5 / 43 s | 6.4 / 6.9 / **7.2**, TTFT 24.7 / 14.1 / 86 s |
+| 48 GB | 6.6 / 6.6 / 5.9, TTFT 17.6 / 6.8 / 41 s | **6.8 / 6.8** / 5.4, TTFT **7.3 / 4.2 / 42 s** | 4.9 / 6.1 / **6.2**, TTFT 43.9 / 6.7 / 101 s |
+| 32 GB | 3.9 / 3.9 / 4.1, TTFT 19.4 / 17.8 / 48 s | **4.2 / 4.3 / 4.3**, TTFT **13.0 / 11.9 / 51 s** | 3.5 / 3.3 / 3.3, TTFT 19.2 / 11.9 / 152 s |
+| 16 GB | 1.8 / 2.0 / 2.5, TTFT 27.6 / 34.5 / 53 s | **2.1 / 2.3 / 2.7**, TTFT 24.3 / **23.5 / 56 s** | 1.7 / 1.5 / 1.8, TTFT **23.2** / 25.1 / 177 s |
+
+Decode is roughly even at 52 GB. As RAM shrinks, Overspill's lead grows: +20-30% decode at 32 GB, +25-60% at
+16 GB, and long-prompt TTFT is 2.4-3.2x faster at every cap. Mixed mode wins only with lots of RAM; below ~48 GB
+all-CPU is better (pinning takes RAM from the page cache). The absolute best on this PC is still native-Windows
+llama.cpp (12.6 tok/s): WSL's disk and memory path costs both engines, and Overspill can't run natively because
+FreeToken is Linux-only. A native Linux boot is the next step for bare-metal numbers.

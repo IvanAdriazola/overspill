@@ -1,0 +1,47 @@
+=== llama.cpp (WSL) M48_warmup 05:08:21 gguf: /mnt/wsl/gmodels/gguf/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf args: --n-cpu-moe 48 -ub 2048
+ready after 76s
+{"mode": "short", "prompt_tokens": 89, "completion_tokens": 128, "chunks": 128, "ttft_s": 9.05, "prefill_tok_s": 9.8, "total_s": 29.53, "decode_tok_s": 6.2}
+TEXT: We need answer user's request: "Explain, in about 250 words, how a Mixture-of-Experts transformer layer routes tokens to experts, and why that makes offloading experts to CPU RAM practical." Need produce final about 250 words. Need likely concise. Need ensure word count around 250. Let's draft ~250 words.
+
+Need explain MoE transformer layer routing tokens to experts: input hidden states, router/gating network computes logits per token over experts, softmax/top-k, weights, dispatch tokens to selected expert FFNs, combine weighted outputs. Sparse activation: each token
+{"mode": "short", "prompt_tokens": 97, "completion_tokens": 400, "chunks": 398, "ttft_s": 6.09, "prefill_tok_s": 15.9, "total_s": 68.07, "decode_tok_s": 6.44}
+TEXT: We need answer user's request: "Write a Python function merge_intervals(intervals) that takes a list of [start, end] pairs and returns the merged, sorted list of non-overlapping intervals. Give only the code and one sentence on its time complexity."
+
+Need produce final only code and one sentence. Need likely include function. Ensure code only? They say Give only the code and one sentence on its time complexity. So final should be code block? Maybe code then sentence. Could be:
+def merge_intervals(intervals):
+    if not intervals:
+        return []
+    intervals.sort(key=lambda x: x[0])
+    merged = [intervals[0][:]]
+    for start, end in intervals[1:]:
+        if start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    return merged
+
+Time complexity: O(n log n) due to sorting, where n is number of intervals.
+
+Need consider mutating input? Could sort copy to avoid side effects? Better: sorted_intervals = sorted(intervals, key=lambda x: x[0]). Then merged. Code only. One sentence after. Ensure no extra explanation. Could include type hints? Fine.
+
+Need final concise.
+```python
+def merge_intervals(intervals):
+    if not intervals:
+        return []
+
+    intervals = sorted(intervals, key=lambda x: x[0])
+    merged = [intervals[0][:]]
+
+    for start, end in intervals[1:]:
+        if start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+
+    return merged
+```
+
+Time complexity: O(n log n) due to sorting
+{"mode": "long_prompt", "prompt_tokens": 5715, "completion_tokens": 120, "chunks": 120, "ttft_s": 97.5, "prefill_tok_s": 58.6, "total_s": 114.64, "decode_tok_s": 6.96}
+TEXT: We need answer user's request: "Summarize what this Python module does in 3 short bullet points." Need provide final concise 3 bullets. Need analyze module. It's a Python module likely engine initialization for FreeToken LLM inference engine. It imports many components, defines helpers for attention backend resolution, KV budget, page table width, dummy weights, Engine class init. Need summarize in 3 short bullet points. Need likely mention configures and initializes inference engine: model loading, distributed/quantization, KV cache, attention backend, MoE offload, multimodal, CUDA graphs

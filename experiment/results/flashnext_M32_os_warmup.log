@@ -1,0 +1,43 @@
+=== M32_os_warmup 05:19:31 args: mixed
+ready after 47s
+{"mode": "short", "prompt_tokens": 89, "completion_tokens": 127, "chunks": 127, "ttft_s": 23.2, "prefill_tok_s": 3.8, "total_s": 54.46, "decode_tok_s": 4.03}
+TEXT: We need answer user's request: "Explain, in about 250 words, how a Mixture-of-Experts transformer layer routes tokens to experts, and why that makes offloading experts to CPU RAM practical." Need produce final about 250 words. Need likely concise. Need ensure word count around 250. Let's draft ~250 words.
+
+Topic: MoE transformer layer routing tokens to experts. Explain: each token embedding goes through router/gating network, produces logits over experts, softmax/top-k selects few experts, weights combine outputs. Sparse activation: only subset experts per token.
+{"mode": "short", "prompt_tokens": 97, "completion_tokens": 399, "chunks": 398, "ttft_s": 16.49, "prefill_tok_s": 5.9, "total_s": 118.15, "decode_tok_s": 3.92}
+TEXT: We need answer user's request: "Write a Python function merge_intervals(intervals) that takes a list of [start, end] pairs and returns the merged, sorted list of non-overlapping intervals. Give only the code and one sentence on its time complexity."
+
+Need provide only code and one sentence time complexity. Likely no extra prose. Need ensure code only? They say give only the code and one sentence. Could output code block then sentence? "only the code and one sentence" maybe code block plus sentence. Need concise. Function merge_intervals. Sort by start, merge overlapping/touching? Usually intervals [start,end], non-overlapping; if end >= next start merge. Return list of lists. Handle empty. Time complexity O(n log n). Need maybe type hints? Fine.
+
+Final should be:
+```python
+def merge_intervals(intervals):
+    if not intervals:
+        return []
+    intervals.sort(key=lambda x: x[0])
+    merged = [intervals[0][:]]
+    for start, end in intervals[1:]:
+        if start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    return merged
+```
+Time complexity: O(n log n) due to sorting, where n is number of intervals.
+
+Need "only the code and one sentence" maybe no code fence? Code fence is code. Sentence after. Ensure no extra. Could include sentence after code. Good.
+
+
+```python
+def merge_intervals(intervals):
+    if not intervals:
+        return []
+
+    intervals.sort(key=lambda x: x[0])
+    merged = [intervals[0][:]]
+
+    for start, end in intervals[1:]:
+        if start <= merged[-1][1]:
+            merged[-1][
+{"mode": "long_prompt", "prompt_tokens": 5715, "completion_tokens": 119, "chunks": 119, "ttft_s": 47.84, "prefill_tok_s": 119.5, "total_s": 76.37, "decode_tok_s": 4.14}
+TEXT: We need answer user's request: "Summarize what this Python module does in 3 short bullet points." Need provide final with 3 short bullets. Need analyze module. It's a Python module likely engine initialization for FreeToken LLM inference engine. It imports many components: attention backends, distributed, quantization, MoE offload, models, KV cache, graph runner, sampler. Defines helpers for offload cache size, backend availability, KV budget, page table width, required attention types, backend resolution/validation, dummy weights, materialize weights, ForwardOutput, Engine class

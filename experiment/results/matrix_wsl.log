@@ -1,0 +1,87 @@
+=== matrix 2026-09-27 03:04 caps: 52 48 32 16 llama: --n-cpu-moe 48 -ub 2048
+Mem:              50           1          49           0           0          49
+cap=52GB overspill mixed (flashnext_M52_os_mixed.log)
+ready after 51s
+  prompt=89 ttft=8.59 dec=7.81
+  prompt=97 ttft=6.0 dec=6.98
+  prompt=5715 ttft=36.25 dec=6.34
+cap=52GB overspill cpu (flashnext_M52_os_cpu.log)
+ready after 42s
+  prompt=89 ttft=6.64 dec=6.93
+  prompt=97 ttft=3.62 dec=7.26
+  prompt=5715 ttft=42.99 dec=5.6
+=== restart 2026-09-27 04:38: earlier M52 rows above were at WSL's default 8192 KB read-ahead for both engines (llama.cpp run aborted at 0.8 tok/s)
+=== matrix 2026-09-27 04:38 caps: 52 48 32 16 llama: --n-cpu-moe 48 -ub 2048 read-ahead KB: overspill 8192, llama.cpp 128
+Mem:              50           1          50           0           0          49
+sde read_ahead_kb: 8192 -> 8192
+cap=52GB overspill mixed (flashnext_M52_os_mixed.log)
+ready after 51s
+  prompt=89 ttft=7.18 dec=7.99
+  prompt=97 ttft=6.74 dec=6.97
+  prompt=5715 ttft=36.34 dec=6.52
+cap=52GB overspill cpu (flashnext_M52_os_cpu.log)
+ready after 43s
+  prompt=89 ttft=6.78 dec=7.07
+  prompt=97 ttft=3.46 dec=7.32
+  prompt=5715 ttft=43.36 dec=5.58
+sde read_ahead_kb: 8192 -> 128
+cap=52GB llama.cpp --n-cpu-moe 48 -ub 2048 (llamacpp_wsl_M52.log)
+ready after 47s
+  prompt=89 ttft=24.73 dec=6.39
+  prompt=97 ttft=14.08 dec=6.89
+  prompt=5715 ttft=86.4 dec=7.18
+Mem:              47           1          46           0           0          45
+sde read_ahead_kb: 8192 -> 8192
+cap=48GB overspill mixed (flashnext_M48_os_mixed.log)
+ready after 40s
+  prompt=89 ttft=17.58 dec=6.64
+  prompt=97 ttft=6.75 dec=6.63
+  prompt=5715 ttft=40.55 dec=5.85
+cap=48GB overspill cpu (flashnext_M48_os_cpu.log)
+ready after 43s
+  prompt=89 ttft=7.32 dec=6.77
+  prompt=97 ttft=4.19 dec=6.82
+  prompt=5715 ttft=42.34 dec=5.42
+sde read_ahead_kb: 8192 -> 128
+cap=48GB llama.cpp --n-cpu-moe 48 -ub 2048 (llamacpp_wsl_M48.log)
+ready after 99s
+  prompt=89 ttft=43.94 dec=4.94
+  prompt=97 ttft=6.74 dec=6.1
+  prompt=5715 ttft=100.86 dec=6.24
+Mem:              31           0          30           0           0          30
+sde read_ahead_kb: 8192 -> 8192
+cap=32GB overspill mixed (flashnext_M32_os_mixed.log)
+ready after 46s
+  prompt=89 ttft=19.39 dec=3.87
+  prompt=97 ttft=17.77 dec=3.89
+  prompt=5715 ttft=48.08 dec=4.07
+cap=32GB overspill cpu (flashnext_M32_os_cpu.log)
+ready after 36s
+  prompt=89 ttft=13.01 dec=4.24
+  prompt=97 ttft=11.91 dec=4.34
+  prompt=5715 ttft=50.67 dec=4.31
+sde read_ahead_kb: 8192 -> 128
+cap=32GB llama.cpp --n-cpu-moe 48 -ub 2048 (llamacpp_wsl_M32.log)
+ready after 73s
+  prompt=89 ttft=19.24 dec=3.47
+  prompt=97 ttft=11.91 dec=3.25
+  prompt=5715 ttft=152.25 dec=3.25
+Mem:              15           0          14           0           0          14
+sde read_ahead_kb: 8192 -> 8192
+cap=16GB overspill mixed (flashnext_M16_os_mixed.log)
+ready after 60s
+  prompt=89 ttft=27.59 dec=1.81
+  prompt=97 ttft=34.53 dec=1.97
+  prompt=5715 ttft=52.54 dec=2.46
+cap=16GB overspill cpu (flashnext_M16_os_cpu.log)
+ready after 39s
+  prompt=89 ttft=24.31 dec=2.14
+  prompt=97 ttft=23.46 dec=2.29
+  prompt=5715 ttft=56.19 dec=2.66
+sde read_ahead_kb: 8192 -> 128
+cap=16GB llama.cpp --n-cpu-moe 48 -ub 2048 (llamacpp_wsl_M16.log)
+ready after 97s
+  prompt=89 ttft=23.18 dec=1.68
+  prompt=97 ttft=25.09 dec=1.45
+  prompt=5715 ttft=177.38 dec=1.75
+=== matrix done 2026-09-27 06:38, .wslconfig back to memory=52GB
