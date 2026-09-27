@@ -17,6 +17,6 @@ case "$MODE" in
   *) echo "mode must be cpu|mixed"; exit 2 ;;
 esac
 cd ~/ft
-echo "model dir: ${FT_MODEL_DIR:-$HOME/models/flashnext_ftw}"
-exec .venv/bin/ft serve --model "${FT_MODEL_DIR:-$HOME/models/flashnext_ftw}" --served-model-name flashnext --text-model-only \
+echo "model dir: ${FT_MODEL_DIR:-/mnt/wsl/gmodels/flashnext_ftw}"
+exec .venv/bin/ft serve --model "${FT_MODEL_DIR:-/mnt/wsl/gmodels/flashnext_ftw}" --served-model-name flashnext --text-model-only \
   --host 127.0.0.1 --port 1919 "${STRATEGY[@]}" --max-running-requests 1 --cuda-graph-max-bs 1 "$@"
