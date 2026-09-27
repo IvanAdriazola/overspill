@@ -90,7 +90,7 @@ the download and the one-time conversion.
 - Linux or WSL2 with an NVIDIA GPU (12 GB VRAM tested) and a CUDA 13 toolkit with `nvcc` on `PATH`
   (FreeToken JIT-compiles its kernels; see [docs/install.md](docs/install.md)).
 - ~48 GB of RAM or more for WSL2, and ideally a CPU with AVX-512. **Give WSL2 as much RAM as Windows can spare**
-  (`memory=` in `%UserProfile%\\.wslconfig`): the page cache is Overspill's RAM tier, so every extra GB means fewer
+  (`memory=` in `%UserProfile%\.wslconfig`): the page cache is Overspill's RAM tier, so every extra GB means fewer
   expert reads from disk. Leave Windows ~10-12 GB: on a 64 GB machine 52 GB works, while 58 GB made Windows page
   the VM itself out and decode collapsed.
 - **~170 GB of free disk:** the 85 GB download plus the 80 GB converted copy. You can delete the download
