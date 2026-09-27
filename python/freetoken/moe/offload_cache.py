@@ -13,6 +13,8 @@ from flashlib.kernels.slot_cache import N_STATS, Stat
 # (kept for A/B profiling). Falls back to per-bank automatically if a bank's row bytes or
 # base address are not 16-byte aligned.
 _FUSED_COPY = os.getenv("FREETOKEN_FUSED_COPY", "1").strip().lower() not in {"0", "false", "no", "off"}
+# Windows: PrefetchVirtualMemory the whole-layer pageable prefill copy (FT_WIN_PREFETCH=0 disables; A/B).
+_WIN_PREFETCH = os.name == "nt" and os.getenv("FT_WIN_PREFETCH", "1").strip().lower() not in {"0", "false", "no", "off"}
 
 # cudaMemcpyBatchAsync silently degrades to a SYNCHRONOUS copy when a batch mixes
 # large entries with sub-~256KB entries on registered host memory (H100 + CUDA 13.0,
@@ -1025,6 +1027,19 @@ class OffloadMoeCache:
                 )
             # the only copy a non-pinned layer ever needs is the non-overlap prefill materialize, which schedules the whole layer into slots [0, num_experts) with position == expert id -- a plain synchronous pageable H2D copy
             # never CUDA-graph captured: prefill is not captured, and decode never reaches this branch (it routes to the CPU executor)
+            if _WIN_PREFETCH:
+                # Windows: page faults on a file mapping read in small pieces (~360 MB/s for this copy on
+                # Flash-Next vs ~1 GB/s under Linux readahead). Queue this layer's banks and the next
+                # unpinned layer's as large async reads first, so the copy overlaps the next layer's I/O.
+                from freetoken.utils.winsys import prefetch_ranges
+
+                nxt = layer_id + 1 if (layer_id + 1) in self._unpinned_layers else None
+                ranges = []
+                for per_layer, _cache in self.banks:
+                    for lid in (layer_id, nxt) if nxt is not None else (layer_id,):
+                        t = per_layer[lid]
+                        ranges.append((t.data_ptr(), t.numel() * t.element_size()))
+                prefetch_ranges(ranges)
             for per_layer, cache in self.banks:
                 cache[: self.num_experts].copy_(per_layer[layer_id])
             return

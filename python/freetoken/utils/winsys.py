@@ -26,6 +26,24 @@ def physical_memory_bytes() -> int | None:
     return int(st.ullTotalPhys)
 
 
+class _MemRange(ctypes.Structure):  # WIN32_MEMORY_RANGE_ENTRY
+    _fields_ = [("VirtualAddress", ctypes.c_void_p), ("NumberOfBytes", ctypes.c_size_t)]
+
+
+def prefetch_ranges(ranges: list[tuple[int, int]]) -> bool:
+    """PrefetchVirtualMemory: queue async reads for the non-resident pages of (address, nbytes) ranges of
+    file mappings -- Windows' madvise(WILLNEED). Returns False if the call failed or is unavailable."""
+    if not ranges:
+        return True
+    arr = (_MemRange * len(ranges))(*[_MemRange(a, n) for a, n in ranges])
+    k32 = ctypes.windll.kernel32
+    # explicit types: the default int conversion truncates the -1 pseudo-handle to 32 bits on x64
+    k32.GetCurrentProcess.restype = wintypes.HANDLE
+    k32.PrefetchVirtualMemory.argtypes = [wintypes.HANDLE, ctypes.c_size_t, ctypes.POINTER(_MemRange), wintypes.ULONG]
+    k32.PrefetchVirtualMemory.restype = wintypes.BOOL
+    return bool(k32.PrefetchVirtualMemory(k32.GetCurrentProcess(), len(ranges), arr, 0))
+
+
 def physical_core_first_cpus() -> list[int]:
     """The lowest logical CPU of each physical core (GetLogicalProcessorInformation), or []."""
     RelationProcessorCore = 0
