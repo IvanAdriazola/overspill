@@ -2,7 +2,8 @@
 
     python dl_m3.py src    -> nvidia/MiniMax-M3-NVFP4 (250 GB): first ~195 GB of files to D:\\AIModels\\m3_src,
                               the rest to F:\\AIModels\\m3_src (only the input of the FTW conversion; deleted after)
-    python dl_m3.py gguf   -> unsloth/MiniMax-M3-GGUF UD-IQ4_XS (208 GB) to C:\\AIModels\\m3_gguf (llama.cpp)
+    python dl_m3.py gguf   -> unsloth/MiniMax-M3-GGUF UD-IQ4_XS (208 GB) to D:\\AIModels\\m3_gguf (llama.cpp;
+                              moved from C: on 2026-09-29 to make room for the FTW, same Kingston NVMe)
 
 Each drive gets its own hub cache and xet's chunk cache is off, so nothing lands elsewhere.
 """
@@ -47,6 +48,6 @@ if which == "src":
     fetch(repo, r"D:\AIModels\m3_src", d_files)
     fetch(repo, r"F:\AIModels\m3_src", f_files)
 elif which == "gguf":
-    fetch("unsloth/MiniMax-M3-GGUF", r"C:\AIModels\m3_gguf", ["UD-IQ4_XS/*"])
+    fetch("unsloth/MiniMax-M3-GGUF", r"D:\AIModels\m3_gguf", ["UD-IQ4_XS/*"])
 else:
     sys.exit("usage: dl_m3.py src|gguf")
