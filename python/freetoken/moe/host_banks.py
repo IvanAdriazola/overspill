@@ -137,15 +137,33 @@ class HostBank:
         # map offsets must be multiples of the 64 KB allocation granularity: map from the
         # granule below and skip the head.
         head = offset % mmap.ALLOCATIONGRANULARITY
+        # Windows charges a copy-on-write view against the commit limit (RAM + pagefile) for its WHOLE size even
+        # if no page is ever written: file banks larger than that fail with WinError 1455 (MiniMax-M3, 233 GiB, on
+        # 64 GB + a 15 GB pagefile). Nothing writes a file bank, so on Windows map it read-only (no commit charge)
+        # and take its address through numpy, which accepts a read-only buffer. Linux keeps ACCESS_COPY
+        # (MAP_PRIVATE file pages cost nothing until written).
+        read_only = os.name == "nt"
         fd = os.open(path, os.O_RDONLY | getattr(os, "O_BINARY", 0))
         try:
-            self._buf = mmap.mmap(fd, self.nbytes + head, access=mmap.ACCESS_COPY, offset=offset - head)
+            self._buf = mmap.mmap(fd, self.nbytes + head, access=mmap.ACCESS_READ if read_only else mmap.ACCESS_COPY,
+                                  offset=offset - head)
         finally:
             os.close(fd)  # the mapping keeps its own reference to the file
         _LIVE_BUFFERS.append(self._buf)
-        self.addr = ctypes.addressof(ctypes.c_char.from_buffer(self._buf, head))
-        self.tensor = torch.frombuffer(self._buf, dtype=dtype, count=self.nbytes // elsize,
-                                       offset=head).view(*shape)
+        if read_only:
+            import warnings
+
+            import numpy as np
+
+            self.addr = np.frombuffer(self._buf, dtype=np.uint8).ctypes.data + head
+            with warnings.catch_warnings():  # "the buffer is not writable": true, and nothing writes it
+                warnings.simplefilter("ignore", UserWarning)
+                self.tensor = torch.frombuffer(self._buf, dtype=dtype, count=self.nbytes // elsize,
+                                               offset=head).view(*shape)
+        else:
+            self.addr = ctypes.addressof(ctypes.c_char.from_buffer(self._buf, head))
+            self.tensor = torch.frombuffer(self._buf, dtype=dtype, count=self.nbytes // elsize,
+                                           offset=head).view(*shape)
         self._head = head
         self._pinned = False
         self._locked = False
