@@ -102,6 +102,13 @@ _BANK_BYTES_PER_EXPERT = {
 MARLIN_MAX_CACHE_SIZE = 992
 
 
+# FT_NO_GPU_SLOTS=1 (with --moe-strategy cpu and FT_CPU_PREFILL_MAX covering every prompt): every MoE layer is
+# served by the CPU executor straight from the host banks, so the GPU slot cache is never read - keep a token few
+# slots instead of a whole layer's worth (3.8 GiB of VRAM on MiniMax-M3, which does not fit a 12 GB card otherwise).
+NO_GPU_SLOTS = os.environ.get("FT_NO_GPU_SLOTS", "").strip().lower() in ("1", "true", "yes", "on")
+NO_GPU_SLOTS_SIZE = 8
+
+
 @dataclass
 class OffloadMoeCache:
     num_layers: int
@@ -454,7 +461,7 @@ class OffloadMoeCache:
         pre-teardown check, so an invalid target rejects with the old cache intact
         (no destructive free first).
         """
-        if cache_size < self.num_experts:
+        if cache_size < self.num_experts and not NO_GPU_SLOTS:
             raise ValueError(f"cache_size {cache_size} < num_experts {self.num_experts}")
         if self.max_slots is not None and cache_size > self.max_slots:
             raise ValueError(

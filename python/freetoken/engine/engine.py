@@ -665,7 +665,15 @@ class Engine:
             )
         except PinFailed as exc:
             raise RuntimeError(f"{exc}; {_pin_hint(self._host_tables_bytes)}") from exc
-        if config.moe_cache_auto:
+        from freetoken.moe.offload_cache import NO_GPU_SLOTS, NO_GPU_SLOTS_SIZE
+
+        if NO_GPU_SLOTS:
+            # the host banks ARE the expert store (CPU executor for decode and, via FT_CPU_PREFILL_MAX, prefill):
+            # no GPU slot cache worth a layer, the freed VRAM goes to the KV pages solved later
+            object.__setattr__(config, "moe_cache_size", NO_GPU_SLOTS_SIZE)
+            object.__setattr__(config, "moe_prefill_overlap", False)
+            logger.info_rank0(f"FT_NO_GPU_SLOTS: moe_cache_size={NO_GPU_SLOTS_SIZE}, experts served from host RAM")
+        elif config.moe_cache_auto:
             size, pages, overlap = self._resolve_auto_moe_cache_size(config, banks, method)
             object.__setattr__(config, "moe_cache_size", size)
             object.__setattr__(config, "moe_prefill_overlap", overlap)
@@ -682,7 +690,8 @@ class Engine:
                 f"--moe-cache-auto resolved moe_cache_size={size} "
                 f"num_pages={pages} (prefill_overlap={overlap})"
             )
-        _require_offload_cache_size(config.moe_cache_size, config.model_config.num_experts)
+        if not NO_GPU_SLOTS:
+            _require_offload_cache_size(config.moe_cache_size, config.model_config.num_experts)
         layout = max_slots = None
         if method is not None:
             if banks.kind is not None and (banks.kind, banks.kernel) != (method.kind, method.kernel.name):

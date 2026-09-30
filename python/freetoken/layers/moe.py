@@ -377,6 +377,10 @@ class OffloadMoELayer(MoELayer):
             and cache.cpu_executor is not None
         ):
             return cache.cpu_executor.decode(self.layer_id, hidden_states, topk_weights, topk_ids)
+        from freetoken.moe.offload_cache import NO_GPU_SLOTS
+
+        if NO_GPU_SLOTS:
+            return self._prefill_routed_grouped(cache, hidden_states, topk_weights, topk_ids)
         if cache.prefill_overlap:
             views = self._wait_prefill_overlap(cache)
             out = self._expert_gemm(
@@ -403,6 +407,52 @@ class OffloadMoELayer(MoELayer):
             alphas=cache.alphas_for_layer(self.layer_id),
             is_prefill=True,
         )
+
+    def _prefill_routed_grouped(
+        self,
+        cache: OffloadMoeCache,
+        hidden_states: torch.Tensor,
+        topk_weights: torch.Tensor,
+        topk_ids: torch.Tensor,
+    ) -> torch.Tensor:
+        """FT_NO_GPU_SLOTS prefill (2026-09-29, MiniMax-M3 on a 12 GB card): the GPU has only a few expert slots, so
+        the layer is streamed in groups of that many - only the experts this chunk routes to, each copied once, in
+        whole-expert blocks - and each group's GEMM runs on just the tokens that use one of its experts (their other
+        assignments get weight 0, so the sum over groups is the layer's output). Same idea as the whole-layer
+        prefill it replaces (read every needed expert once, big copies, GPU compute), in a fraction of the VRAM."""
+        group_size = cache.cache_size
+        out = torch.zeros_like(hidden_states)
+        alphas = cache.alphas_for_layer(self.layer_id)
+        touched = torch.unique(topk_ids).tolist()
+        lut = torch.full((self.num_experts,), -1, dtype=topk_ids.dtype, device=topk_ids.device)
+        for start in range(0, len(touched), group_size):
+            group = touched[start:start + group_size]
+            n = len(group)
+            for source, slots in cache.banks:
+                src = source[self.layer_id]
+                if src.dim() == 0 or src.shape[0] != self.num_experts:
+                    continue
+                slots[:n].copy_(src[group], non_blocking=False)
+            ids = torch.tensor(group, dtype=topk_ids.dtype, device=topk_ids.device)
+            lut.fill_(-1)
+            lut[ids] = torch.arange(n, dtype=topk_ids.dtype, device=topk_ids.device)
+            mapped = lut[topk_ids]
+            in_group = mapped >= 0
+            rows = in_group.any(dim=1).nonzero().squeeze(1)
+            if rows.numel() == 0:
+                continue
+            part = self._expert_gemm(
+                cache,
+                hidden_states[rows],
+                torch.where(in_group[rows], topk_weights[rows], torch.zeros_like(topk_weights[rows])),
+                mapped[rows].clamp(min=0),
+                views=cache.bank_views(n),
+                n=n,
+                alphas=(alphas[0][ids.long()], alphas[1][ids.long()]) if alphas is not None else None,
+                is_prefill=True,
+            )
+            out.index_add_(0, rows, part.to(out.dtype))
+        return out
 
     def _wait_prefill_overlap(self, cache: OffloadMoeCache) -> tuple[torch.Tensor, ...]:
         """Double-buffer choreography for this layer's overlap prefill: kick off the
