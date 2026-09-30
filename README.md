@@ -8,9 +8,28 @@ execution path stays as it is. Inspired by the disk -> RAM -> VRAM tiering in
 [Colibri](https://github.com/JustVugg/colibri).
 
 
-> **Status: experimental preview.** It works and is measured on one machine and one model (details below).
-> Expect rough edges, hard-coded defaults, and missing tests. Issues and reports from other hardware
-> are very welcome.
+> **Status: archived (2026-09-30) - no longer maintained.** The code and the numbers below stay as they were
+> measured; nothing here is being developed further. See [Why it was archived](#why-it-was-archived).
+
+## Why it was archived
+
+Overspill did what it set out to do: in my tests it was the fastest way I found to run a MoE whose experts do not
+fit in RAM (vs llama.cpp and Colibri on the same model and machine, below). But for what I actually run - local
+agent loops on an RTX 3060 12 GB with 64 GB of RAM - it was the wrong trade-off:
+
+- **Every test takes a long time.** A model that does not fit in RAM means converting and moving 85-230 GB per
+  model, cold-cache runs, and prompts that have to stream most of the experts from disk. One measurement round
+  took hours; a new model took days of download, conversion and disk shuffling before the first number.
+- **The speed ceiling is low for agents.** ~3 tok/s decode on DeepSeek-V4-Flash REAP-150B is a big win over the
+  alternatives, but an agent loop makes dozens of calls per task, each with thousands of new prompt tokens.
+  MiniMax-M3 (the last attempt, unpublished work in `experiment/`) ran at ~0.4 tok/s.
+- **[Strata](https://github.com/Niko1221/Strata) is simply a better fit for my requirements.** It is an engine
+  built around one model (Qwen3.8-Flash-Next) that fits my RAM and VRAM, and it gives me ~45 tok/s decode with
+  prefix caching that suits agent workloads. For a model that fits, a dedicated engine beats a disk tier.
+
+If you need a MoE bigger than your RAM on a consumer GPU, the approach and the notes here
+([`experiment/DESIGN_NOTES.md`](experiment/DESIGN_NOTES.md)) may still be useful - the parallel reader for the
+grouped prefill and the Windows read-only mapping fix below are the most reusable parts.
 
 ## Why
 
@@ -193,6 +212,17 @@ These follow Colibri's documented 10-12 GB VRAM configuration. The 6.4k prompt n
   virtual disk) and more RAM help directly.
 - The first request after a cold start is slow (~40 s) while the page cache fills.
 - Single request at a time (`--max-running-requests 1`) is the tested configuration.
+
+## Last changes before archiving (2026-09-29, unbenchmarked beyond MiniMax-M3)
+
+- **Windows: file banks mapped read-only** - a copy-on-write view is charged in full against the commit limit and
+  failed with WinError 1455 on a 233 GB model.
+- **`FT_NO_GPU_SLOTS=1`** - serve experts from host RAM with only a few GPU slots, for models whose dense part
+  leaves almost no VRAM (MiniMax-M3 on 12 GB).
+- **Grouped GPU prefill with a parallel reader** - with few GPU slots the layer is streamed in groups; each group's
+  experts are read from the FTW shards by 8 threads in 8 MiB chunks into pinned, double-buffered staging instead
+  of page-faulting through the map (~0.5 GB/s before). `FT_GROUP_READ_CHECK=1` verifies the reads.
+- MiniMax-M3 conversion/prefetch scripts in `experiment/` (M3 reached ~64-70 s TTFT and ~0.4 tok/s decode).
 
 ## Credits
 
