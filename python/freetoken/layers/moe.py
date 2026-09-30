@@ -419,39 +419,48 @@ class OffloadMoELayer(MoELayer):
         the layer is streamed in groups of that many - only the experts this chunk routes to, each copied once, in
         whole-expert blocks - and each group's GEMM runs on just the tokens that use one of its experts (their other
         assignments get weight 0, so the sum over groups is the layer's output). Same idea as the whole-layer
-        prefill it replaces (read every needed expert once, big copies, GPU compute), in a fraction of the VRAM."""
+        prefill it replaces (read every needed expert once, big copies, GPU compute), in a fraction of the VRAM.
+
+        File-mapped banks are READ, not page-faulted: each expert's byte range comes from FILE_BANK_SOURCES and is
+        read by a thread pool in 8 MiB chunks into a pinned staging buffer (double-buffered: the next group is read
+        while this one is copied and computed). The first version copied from the mapped tensors - one page fault
+        at a time, one thread - and moved ~0.5 GB/s off an NVMe that reads several GB/s."""
         group_size = cache.cache_size
         out = torch.zeros_like(hidden_states)
         alphas = cache.alphas_for_layer(self.layer_id)
         touched = torch.unique(topk_ids).tolist()
+        groups = [touched[k:k + group_size] for k in range(0, len(touched), group_size)]
         lut = torch.full((self.num_experts,), -1, dtype=topk_ids.dtype, device=topk_ids.device)
-        for start in range(0, len(touched), group_size):
-            group = touched[start:start + group_size]
+        pairs = [(source[self.layer_id], slots) for source, slots in cache.banks]
+        pairs = [(src, slots) for src, slots in pairs if src.dim() > 0 and src.shape[0] == self.num_experts]
+        staged = _GroupStager.get(pairs, group_size)
+        pending = staged.read_async(pairs, groups[0], 0) if groups else None
+        for gi, group in enumerate(groups):
             n = len(group)
-            for source, slots in cache.banks:
-                src = source[self.layer_id]
-                if src.dim() == 0 or src.shape[0] != self.num_experts:
-                    continue
-                slots[:n].copy_(src[group], non_blocking=False)
+            pending.result()
+            if gi + 1 < len(groups):
+                nxt = staged.read_async(pairs, groups[gi + 1], (gi + 1) % 2)
+            staged.upload(pairs, n, gi % 2)
             ids = torch.tensor(group, dtype=topk_ids.dtype, device=topk_ids.device)
             lut.fill_(-1)
             lut[ids] = torch.arange(n, dtype=topk_ids.dtype, device=topk_ids.device)
             mapped = lut[topk_ids]
             in_group = mapped >= 0
             rows = in_group.any(dim=1).nonzero().squeeze(1)
-            if rows.numel() == 0:
-                continue
-            part = self._expert_gemm(
-                cache,
-                hidden_states[rows],
-                torch.where(in_group[rows], topk_weights[rows], torch.zeros_like(topk_weights[rows])),
-                mapped[rows].clamp(min=0),
-                views=cache.bank_views(n),
-                n=n,
-                alphas=(alphas[0][ids.long()], alphas[1][ids.long()]) if alphas is not None else None,
-                is_prefill=True,
-            )
-            out.index_add_(0, rows, part.to(out.dtype))
+            if rows.numel():
+                part = self._expert_gemm(
+                    cache,
+                    hidden_states[rows],
+                    torch.where(in_group[rows], topk_weights[rows], torch.zeros_like(topk_weights[rows])),
+                    mapped[rows].clamp(min=0),
+                    views=cache.bank_views(n),
+                    n=n,
+                    alphas=(alphas[0][ids.long()], alphas[1][ids.long()]) if alphas is not None else None,
+                    is_prefill=True,
+                )
+                out.index_add_(0, rows, part.to(out.dtype))
+            if gi + 1 < len(groups):
+                pending = nxt
         return out
 
     def _wait_prefill_overlap(self, cache: OffloadMoeCache) -> tuple[torch.Tensor, ...]:
@@ -504,6 +513,87 @@ class OffloadMoELayer(MoELayer):
                 hidden_states, gate_up, down, topk_weights, topk_ids, self.activation
             )
         raise AssertionError(f"offload experts without a quant method only serve q4_0 banks, got {fmt!r}")
+
+
+class _GroupStager:
+    """Pinned double-buffered staging for _prefill_routed_grouped: reads experts' byte ranges from the FTW shards
+    with a thread pool (large parallel reads instead of page faults) and uploads a group to the GPU slots.
+    Banks without a file source (pinned/locked in RAM) are copied straight from their tensor instead."""
+
+    _instances: dict = {}
+
+    @classmethod
+    def get(cls, pairs, group_size):
+        key = (tuple((tuple(src.shape[1:]), src.dtype) for src, _ in pairs), group_size)
+        inst = cls._instances.get(key)
+        if inst is None:
+            inst = cls._instances[key] = cls(pairs, group_size)
+        return inst
+
+    def __init__(self, pairs, group_size):
+        import threading
+        from concurrent.futures import ThreadPoolExecutor
+
+        threads = int(os.getenv("FT_GROUP_READ_THREADS", "8"))
+        self._pool = ThreadPoolExecutor(max_workers=threads, thread_name_prefix="ft-group-read")
+        self._outer = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ft-group-stage")
+        self._local = threading.local()
+        self._chunk = 8 << 20
+        self._buffers = [
+            [torch.empty((group_size, *src.shape[1:]), dtype=src.dtype, pin_memory=True) for src, _ in pairs]
+            for _ in range(2)
+        ]
+
+    def _fh(self, path):
+        handles = getattr(self._local, "handles", None)
+        if handles is None:
+            handles = self._local.handles = {}
+        fh = handles.get(path)
+        if fh is None:
+            fh = handles[path] = open(path, "rb", buffering=0)
+        return fh
+
+    def _read(self, job):
+        path, off, n, dest = job
+        fh = self._fh(path)
+        fh.seek(off)
+        view = memoryview(dest)
+        got = 0
+        while got < n:
+            k = fh.readinto(view[got:n])
+            if not k:
+                raise OSError(f"short read of {path} at {off + got}")
+            got += k
+
+    def _stage(self, pairs, group, slot):
+        from freetoken.moe.host_banks import FILE_BANK_SOURCES
+
+        jobs = []
+        for (src, _), buf in zip(pairs, self._buffers[slot]):
+            row = src[0].numel() * src.element_size()
+            dest = buf.view(torch.uint8).view(-1).numpy()
+            info = FILE_BANK_SOURCES.get(src.data_ptr())
+            for j, e in enumerate(group):
+                if info is None:
+                    buf[j].copy_(src[e])
+                    continue
+                path, base, _ = info
+                for c in range(0, row, self._chunk):
+                    n = min(self._chunk, row - c)
+                    jobs.append((path, base + e * row + c, n, dest[j * row + c: j * row + c + n]))
+        list(self._pool.map(self._read, jobs))
+        if os.getenv("FT_GROUP_READ_CHECK") and not getattr(self, "_checked", False) and group:
+            self._checked = True
+            for (src, _), buf in zip(pairs, self._buffers[slot]):
+                same = torch.equal(buf[0].view(torch.uint8), src[group[0]].contiguous().view(torch.uint8))
+                print(f"[FT_GROUP_READ_CHECK] expert {group[0]} bank {tuple(src.shape)}: read == mapped: {same}", flush=True)
+
+    def read_async(self, pairs, group, slot):
+        return self._outer.submit(self._stage, pairs, group, slot)
+
+    def upload(self, pairs, n, slot):
+        for (_, slots), buf in zip(pairs, self._buffers[slot]):
+            slots[:n].copy_(buf[:n], non_blocking=False)
 
 
 def make_moe_layer(
